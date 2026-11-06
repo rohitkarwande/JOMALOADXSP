@@ -9,8 +9,8 @@
     "build:electron": "tsc --project tsconfig.electron.json",
     "build:all": "npm run build && npm run build:electron",
     "dist:exe": "npm run build:all && electron-builder --win nsis portable",
-    "start": "npm run build:all && electron .",
-    "app": "npm run build:all && electron .",
+    "start": "npm run build:all && node scripts/run-electron.js",
+    "app": "npm run build:all && node scripts/run-electron.js",
     "preview": "vite preview"
   },
   "dependencies": {
