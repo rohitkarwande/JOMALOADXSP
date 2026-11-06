@@ -307,7 +307,8 @@ export const HistoryAndPdf: React.FC<HistoryAndPdfProps> = ({
 
     const modeSetpoint = getModeSetpointString(session);
 
-    doc.text(`Operation Mode: ${session.mode}`, 14, currentY);
+    const modeLabel = session.mode === 'PS_MODE' ? 'SINGLE POWER SUPPLY' : session.mode;
+    doc.text(`Operation Mode: ${modeLabel}`, 14, currentY);
     doc.text(`Mode Setpoint Target: ${modeSetpoint}`, 14, currentY + 6);
     doc.text(`Hardware Profile: ${session.deviceProfileName || 'JOMA Power Simulator'}`, 14, currentY + 12);
     doc.text(`Duration: ${formatDuration(session.durationSeconds)}`, pageWidth / 2 + 10, currentY);
@@ -436,7 +437,7 @@ export const HistoryAndPdf: React.FC<HistoryAndPdfProps> = ({
                     <td>{s.startTime}</td>
                     <td>
                       <span className="active-mode-tag" style={{ fontSize: '0.75rem', padding: '2px 8px' }}>
-                        {s.mode}
+                        {s.mode === 'PS_MODE' ? 'POWER SUPPLY' : s.mode}
                       </span>
                     </td>
                     <td>{formatDuration(s.durationSeconds)}</td>
@@ -527,7 +528,7 @@ export const HistoryAndPdf: React.FC<HistoryAndPdfProps> = ({
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px', background: '#f8fafc', padding: '16px', borderRadius: '8px' }}>
                 <div>
-                  <p><strong>Operation Mode:</strong> {selectedSession.mode}</p>
+                  <p><strong>Operation Mode:</strong> {selectedSession.mode === 'PS_MODE' ? 'SINGLE POWER SUPPLY' : selectedSession.mode}</p>
                   <p><strong>Mode Setpoint:</strong> {getModeSetpointString(selectedSession)}</p>
                   <p><strong>Hardware Profile:</strong> {selectedSession.deviceProfileName || 'JOMA Power Simulator'}</p>
                 </div>

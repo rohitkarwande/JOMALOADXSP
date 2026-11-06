@@ -91,52 +91,29 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
 
       {/* When in Single Power Supply Mode (15), hide normal load modes and show ONLY Single PS Mode */}
       {currentMode === 'PS_MODE' ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div
-            className="btn-mode-tab active"
-            style={{
-              cursor: 'default',
-              background: 'linear-gradient(135deg, #1e40af 0%, #2563eb 100%)',
-              color: '#ffffff',
-              border: '1.5px solid #60a5fa',
-              boxShadow: '0 0 12px rgba(37, 99, 235, 0.4)',
-              fontWeight: 800,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '6px 14px',
-              borderRadius: '6px'
-            }}
-            title="Single Power Supply Mode is active (Switched from hardware button - write 15). Press hardware button again to return to CV mode (write 6)."
-          >
-            <Zap size={16} style={{ color: '#fbbf24' }} />
-            <span>SINGLE POWER SUPPLY MODE</span>
-            <span style={{ fontSize: '0.7rem', background: 'rgba(255,255,255,0.2)', padding: '2px 6px', borderRadius: '4px' }}>
-              HW MODE 15
-            </span>
-          </div>
-
-          {/* UI Preview Mode Switcher back to CV */}
-          <button
-            className="btn-mode-tab"
-            style={{
-              cursor: isOutputOn ? 'not-allowed' : 'pointer',
-              background: 'rgba(15, 23, 42, 0.6)',
-              border: '1px solid #475569',
-              color: '#94a3b8',
-              fontSize: '0.8rem',
-              padding: '5px 12px',
-              borderRadius: '6px'
-            }}
-            disabled={isOutputOn}
-            onClick={() => {
-              if (isOutputOn) return;
-              onSelectMode('CV');
-            }}
-            title="UI Preview Toggle: Return to CV Mode (Hardware button write 6)"
-          >
-            <span>Exit to CV Mode</span>
-          </button>
+        <div
+          className="btn-mode-tab active"
+          style={{
+            cursor: 'default',
+            background: 'linear-gradient(135deg, #1e40af 0%, #2563eb 100%)',
+            color: '#ffffff',
+            border: '1.5px solid #60a5fa',
+            boxShadow: '0 0 12px rgba(37, 99, 235, 0.4)',
+            fontWeight: 800,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '6px 14px',
+            borderRadius: '6px'
+          }}
+          title="Single Power Supply Mode is active (Switched from hardware button - write 15). Press hardware button again to return to CV mode (write 6)."
+        >
+          <Zap size={16} style={{ color: '#fbbf24' }} />
+          <span>SINGLE POWER SUPPLY MODE</span>
+          <span style={{ fontSize: '0.7rem', background: 'rgba(255,255,255,0.2)', padding: '2px 6px', borderRadius: '4px' }}>
+            HW MODE 15
+          </span>
+          <Lock size={12} style={{ color: '#93c5fd', marginLeft: '2px' }} />
         </div>
       ) : (
         <>
@@ -170,34 +147,27 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({
             );
           })}
 
-          {/* Single PS Mode Tab (Clickable for UI Preview, and switches to Mode 15) */}
-          <button
+          {/* Non-clickable indicator for Single PS Mode (Switched via hardware only) */}
+          <div
             className="btn-mode-tab"
             style={{
-              cursor: (isTestRunning || isOutputOn) ? 'not-allowed' : 'pointer',
-              border: '1.5px solid #3b82f6',
-              background: 'rgba(30, 58, 138, 0.35)',
-              color: '#93c5fd',
+              cursor: 'not-allowed',
+              opacity: 0.7,
+              border: '1.5px dashed #475569',
+              background: 'rgba(30, 41, 59, 0.5)',
+              color: '#94a3b8',
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
               padding: '6px 12px',
               borderRadius: '6px'
             }}
-            disabled={isTestRunning || isOutputOn}
-            onClick={() => {
-              if (isTestRunning || isOutputOn) return;
-              onSelectMode('PS_MODE');
-              if (activeView !== 'dashboard') onSelectView('dashboard');
-            }}
-            title="Single Power Supply Mode (Hardware Mode 15). Click to preview UI."
+            title="Single Power Supply Mode is switched from physical hardware button only (writes 15 to register)"
           >
-            <Zap size={15} style={{ color: '#60a5fa' }} />
+            <Zap size={15} style={{ color: '#64748b' }} />
             <span>SINGLE PS MODE</span>
-            <span style={{ fontSize: '0.65rem', background: '#2563eb', color: '#fff', padding: '1px 5px', borderRadius: '3px' }}>
-              PREVIEW
-            </span>
-          </button>
+            <Lock size={12} style={{ color: '#94a3b8' }} />
+          </div>
         </>
       )}
     </div>

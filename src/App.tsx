@@ -15,7 +15,7 @@ import './styles/index.css';
 
 export const App: React.FC = () => {
   const [activeView, setActiveView] = useState<ActiveViewType>('dashboard');
-  const [currentMode, setCurrentMode] = useState<OperationMode>('PS_MODE');
+  const [currentMode, setCurrentMode] = useState<OperationMode>('CV');
   const [outputState, setOutputState] = useState<boolean>(false);
   const [connectionStatus, setConnectionStatus] = useState<'CONNECTED' | 'DISCONNECTED'>('DISCONNECTED');
   const [safetyModal, setSafetyModal] = useState<{ title?: string; message: string } | null>(null);
@@ -652,6 +652,12 @@ export const App: React.FC = () => {
 
   // Mode Selection Handler - Real-time switching matching diagnostic panel
   const handleSelectMode = async (mode: OperationMode) => {
+    // HARDWARE LOCK GUARD: Single PS Mode cannot be triggered from PC UI (Hardware button only - register 15)
+    if (mode === 'PS_MODE') {
+      console.warn('[HARDWARE LOCK] PS_MODE is switched from hardware button only (register 15).');
+      return;
+    }
+
     // OPERATOR LOCK GUARD: Block mode changes when physical Output is ON!
     if (outputState) {
       console.warn(`[OPERATOR LOCK] Mode change to ${mode} blocked because Output is currently ON!`);

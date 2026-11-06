@@ -293,7 +293,7 @@ export class ModbusRtuService {
   private activeProfile: DeviceProfile = BUILTIN_PROFILES[0];
   private outputState: boolean = false;
   private outputConfirmedState: 'ON' | 'OFF' | 'UNKNOWN' = 'UNKNOWN';
-  private currentMode: OperationMode = 'PS_MODE';
+  private currentMode: OperationMode = 'CV';
 
   private engSettings: EngineeringSettings = {
     vmax: 60.0,
