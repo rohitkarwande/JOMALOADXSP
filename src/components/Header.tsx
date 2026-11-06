@@ -8,7 +8,7 @@ interface HeaderProps {
   batTestSubMode?: 'CC' | 'CR';
   connectionStatus: 'CONNECTED' | 'DISCONNECTED';
   activeTab: 'dashboard' | 'sequence' | 'history' | 'settings' | 'engSettings';
-  protocolType?: 'RS485' | 'RS232';
+  protocolType?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({

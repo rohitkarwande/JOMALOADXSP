@@ -11,7 +11,7 @@ interface NavigationTabsProps {
   onSelectView: (view: ActiveViewType) => void;
   isOutputOn?: boolean;
   isTestRunning?: boolean;
-  protocolType?: 'RS485' | 'RS232';
+  protocolType?: string;
 }
 
 const MODES: { id: OperationMode; label: string; icon: React.ReactNode }[] = [

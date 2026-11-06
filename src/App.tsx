@@ -990,7 +990,7 @@ export const App: React.FC = () => {
         batTestSubMode={setpoints.batTestSubMode}
         connectionStatus={connectionStatus}
         activeTab={activeView}
-        protocolType={settings.protocolType || 'RS485'}
+        protocolType={settings.transportType === 'TCP' ? 'TCP/IP' : (settings.protocolType || 'RS485')}
       />
 
       <NavigationTabs
@@ -1000,7 +1000,7 @@ export const App: React.FC = () => {
         onSelectView={handleSelectView}
         isOutputOn={outputState}
         isTestRunning={isSequenceRunning}
-        protocolType={settings.protocolType || 'RS485'}
+        protocolType={settings.transportType === 'TCP' ? 'TCP/IP' : (settings.protocolType || 'RS485')}
       />
 
       {(activeView === 'dashboard' || outputState) && (

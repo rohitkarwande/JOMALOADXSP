@@ -862,25 +862,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             />
           </div>
           <div style={{
-            background: '#eff6ff',
-            border: '1.5px solid #bfdbfe',
+            background: localSettings.transportType === 'TCP' ? '#f0fdf4' : '#eff6ff',
+            border: localSettings.transportType === 'TCP' ? '1.5px solid #bbf7d0' : '1.5px solid #bfdbfe',
             borderRadius: '8px',
             padding: '14px 18px',
             display: 'flex',
             flexDirection: 'column',
             gap: '8px',
             fontSize: '0.86rem',
-            color: '#1e3a8a'
+            color: localSettings.transportType === 'TCP' ? '#14532d' : '#1e3a8a'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800 }}>
-              <AlertCircle size={18} style={{ color: '#2563eb', flexShrink: 0 }} />
-              <span>RS485 HARDWARE CONNECTION & TROUBLESHOOTING GUIDE</span>
-            </div>
-            <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.5', color: '#1e40af' }}>
-              <li><strong>Wiring Polarity:</strong> If COM port shows Connected but Voltage/Current stays at 0.00V, <strong>swap the A+ and B- wires</strong> on your USB adapter. RS485 polarity inversion is the most common cause of no response.</li>
-              <li><strong>Slave ID:</strong> Check your DC Power Supply / Load front panel menu to ensure its Modbus Address matches the <strong>SLAVE ID</strong> configured above (default: 1).</li>
-              <li><strong>Baud Rate:</strong> Confirm the baud rate matches the device setting (default: 9600, 8 data bits, no parity, 1 stop bit).</li>
-            </ul>
+            {localSettings.transportType === 'TCP' ? (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800, color: '#166534' }}>
+                  <Globe size={18} style={{ color: '#16a34a', flexShrink: 0 }} />
+                  <span>MODBUS TCP/IP ETHERNET CONNECTION & TROUBLESHOOTING GUIDE</span>
+                </div>
+                <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.5', color: '#15803d' }}>
+                  <li><strong>Subnet & IP:</strong> Ensure your PC Ethernet adapter is in the same IP subnet as the hardware (e.g. 192.168.1.xxx). Ping <code>{localSettings.tcpHost || '192.168.1.100'}</code> to verify network reachability.</li>
+                  <li><strong>Port:</strong> Default Modbus TCP port is <strong>502</strong>. Verify your hardware controller or gateway is listening on this port.</li>
+                  <li><strong>Unit / Slave ID:</strong> Make sure the <strong>MODBUS UNIT / SLAVE ID</strong> matches your controller setting (default: 1).</li>
+                </ul>
+              </>
+            ) : (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800 }}>
+                  <AlertCircle size={18} style={{ color: '#2563eb', flexShrink: 0 }} />
+                  <span>RS485 HARDWARE CONNECTION & TROUBLESHOOTING GUIDE</span>
+                </div>
+                <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.5', color: '#1e40af' }}>
+                  <li><strong>Wiring Polarity:</strong> If COM port shows Connected but Voltage/Current stays at 0.00V, <strong>swap the A+ and B- wires</strong> on your USB adapter. RS485 polarity inversion is the most common cause of no response.</li>
+                  <li><strong>Slave ID:</strong> Check your DC Power Supply / Load front panel menu to ensure its Modbus Address matches the <strong>SLAVE ID</strong> configured above (default: 1).</li>
+                  <li><strong>Baud Rate:</strong> Confirm the baud rate matches the device setting (default: 9600, 8 data bits, no parity, 1 stop bit).</li>
+                </ul>
+              </>
+            )}
           </div>
 
           {/* Connection Error Alert */}
@@ -914,7 +930,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div>
               {savedSuccess && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#16a34a', fontWeight: 800, fontSize: '0.95rem' }}>
-                  <Check size={20} /> RS485 Connected ({localSettings.port} @ {localSettings.baudRate} bps)!
+                  <Check size={20} />
+                  {localSettings.transportType === 'TCP'
+                    ? `Modbus TCP Connected (${localSettings.tcpHost || '192.168.1.100'}:${localSettings.tcpPort || 502})!`
+                    : `${localSettings.protocolType || 'RS485'} Connected (${localSettings.port} @ ${localSettings.baudRate} bps)!`}
                 </div>
               )}
             </div>
@@ -968,7 +987,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     }}
                   >
                     <Power size={18} />
-                    <span>DISCONNECT FROM RS485</span>
+                    <span>
+                      {localSettings.transportType === 'TCP'
+                        ? 'DISCONNECT FROM TCP/IP'
+                        : `DISCONNECT FROM ${localSettings.protocolType || 'RS485'}`}
+                    </span>
                   </button>
                 </>
               ) : (
@@ -979,9 +1002,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onClick={handleConnectToggle}
                   style={{
                     padding: '14px 36px',
-                    fontSize: '1.1rem',
+                    fontSize: '1.05rem',
                     fontWeight: 800,
-                    background: '#16a34a',
+                    background: localSettings.transportType === 'TCP' ? '#16a34a' : '#0284c7',
                     borderRadius: '6px',
                     boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
                     display: 'flex',
@@ -996,12 +1019,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   {isConnecting ? (
                     <>
                       <RefreshCw size={20} className="spin" />
-                      <span>CONNECTING...</span>
+                      <span>
+                        {localSettings.transportType === 'TCP'
+                          ? `CONNECTING TO ${localSettings.tcpHost || '192.168.1.100'}:${localSettings.tcpPort || 502}...`
+                          : 'CONNECTING...'}
+                      </span>
                     </>
                   ) : (
                     <>
-                      <Power size={20} />
-                      <span>CONNECT TO RS485 HARDWARE</span>
+                      {localSettings.transportType === 'TCP' ? <Globe size={20} /> : <Power size={20} />}
+                      <span>
+                        {localSettings.transportType === 'TCP'
+                          ? `CONNECT TO TCP/IP (${localSettings.tcpHost || '192.168.1.100'}:${localSettings.tcpPort || 502})`
+                          : `CONNECT TO ${localSettings.protocolType || 'RS485'} HARDWARE`}
+                      </span>
                     </>
                   )}
                 </button>
