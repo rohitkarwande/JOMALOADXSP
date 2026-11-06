@@ -43,6 +43,8 @@ export const App: React.FC = () => {
     imax: 30.0,
     pmax: 5000.0,
     rmax: 100.0,
+    vmaxPs: 60.0,
+    imaxPs: 30.0,
     logIntervalMinutes: 1,
     logIntervalSeconds: 60
   });
@@ -58,7 +60,9 @@ export const App: React.FC = () => {
     batTestSubMode: 'CC',
     ah: 0.0,
     hrs: 0,
-    min: 0
+    min: 0,
+    vsetPs: 12.00,
+    isetPs: 3.00
   });
 
   const [outputConfirmedState, setOutputConfirmedState] = useState<'ON' | 'OFF' | 'UNKNOWN'>('UNKNOWN');
@@ -222,6 +226,16 @@ export const App: React.FC = () => {
         newPset = regs['POWER_CP_MODE'].value;
         changed = true;
       }
+      let newVsetPs = prev.vsetPs;
+      if (typeof regs['V_SET_PS']?.value === 'number' && regs['V_SET_PS'].value >= 0 && regs['V_SET_PS'].value !== prev.vsetPs) {
+        newVsetPs = regs['V_SET_PS'].value;
+        changed = true;
+      }
+      let newIsetPs = prev.isetPs;
+      if (typeof regs['I_SET_PS']?.value === 'number' && regs['I_SET_PS'].value >= 0 && regs['I_SET_PS'].value !== prev.isetPs) {
+        newIsetPs = regs['I_SET_PS'].value;
+        changed = true;
+      }
 
       if (!changed) return prev;
       return {
@@ -235,7 +249,9 @@ export const App: React.FC = () => {
         iset: newIset,
         imax: newImax,
         rset: newRset,
-        pset: newPset
+        pset: newPset,
+        vsetPs: newVsetPs,
+        isetPs: newIsetPs
       };
     });
 
@@ -261,6 +277,16 @@ export const App: React.FC = () => {
         newRmax = regs['R_MAX'].value;
         changed = true;
       }
+      let newVmaxPs = prev.vmaxPs;
+      if (typeof regs['V_MAX_PS']?.value === 'number' && regs['V_MAX_PS'].value > 0 && regs['V_MAX_PS'].value !== prev.vmaxPs) {
+        newVmaxPs = regs['V_MAX_PS'].value;
+        changed = true;
+      }
+      let newImaxPs = prev.imaxPs;
+      if (typeof regs['I_MAX_PS']?.value === 'number' && regs['I_MAX_PS'].value > 0 && regs['I_MAX_PS'].value !== prev.imaxPs) {
+        newImaxPs = regs['I_MAX_PS'].value;
+        changed = true;
+      }
 
       if (!changed) return prev;
       return {
@@ -268,7 +294,9 @@ export const App: React.FC = () => {
         vmax: newVmax,
         imax: newImax,
         pmax: newPmax,
-        rmax: newRmax
+        rmax: newRmax,
+        vmaxPs: newVmaxPs,
+        imaxPs: newImaxPs
       };
     });
   };
@@ -338,6 +366,14 @@ export const App: React.FC = () => {
           setSetpoints((prev) => (prev.batTestSubMode !== point.hardwareBatSubMode ? { ...prev, batTestSubMode: point.hardwareBatSubMode! } : prev));
         }
 
+        // Single Power Supply Mode Setpoints & Limits Synchronization from hardware
+        if (point.hardwareVsetPs !== undefined && point.hardwareVsetPs >= 0) {
+          setSetpoints((prev) => (prev.vsetPs !== point.hardwareVsetPs ? { ...prev, vsetPs: point.hardwareVsetPs! } : prev));
+        }
+        if (point.hardwareIsetPs !== undefined && point.hardwareIsetPs >= 0) {
+          setSetpoints((prev) => (prev.isetPs !== point.hardwareIsetPs ? { ...prev, isetPs: point.hardwareIsetPs! } : prev));
+        }
+
         if (point.hardwareVmax !== undefined && point.hardwareVmax > 0) {
           setEngSettings((prev) => (prev.vmax !== point.hardwareVmax ? { ...prev, vmax: point.hardwareVmax! } : prev));
         }
@@ -349,6 +385,12 @@ export const App: React.FC = () => {
         }
         if (point.hardwareRmax !== undefined && point.hardwareRmax > 0) {
           setEngSettings((prev) => (prev.rmax !== point.hardwareRmax ? { ...prev, rmax: point.hardwareRmax! } : prev));
+        }
+        if (point.hardwareVmaxPs !== undefined && point.hardwareVmaxPs > 0) {
+          setEngSettings((prev) => (prev.vmaxPs !== point.hardwareVmaxPs ? { ...prev, vmaxPs: point.hardwareVmaxPs! } : prev));
+        }
+        if (point.hardwareImaxPs !== undefined && point.hardwareImaxPs > 0) {
+          setEngSettings((prev) => (prev.imaxPs !== point.hardwareImaxPs ? { ...prev, imaxPs: point.hardwareImaxPs! } : prev));
         }
 
         // 2-way HMI synchronization: If Output ON/OFF changed on physical hardware panel, reflect in app!
@@ -651,6 +693,13 @@ export const App: React.FC = () => {
     }
   }, [outputState, activeView]);
 
+  // When switched to Single Power Supply Mode (15), automated sequence is disabled
+  useEffect(() => {
+    if (currentMode === 'PS_MODE' && activeView === 'sequence') {
+      setActiveView('dashboard');
+    }
+  }, [currentMode, activeView]);
+
   // Setpoint Update Handler - Triggered on ENTER key or SET/ENTER button click
   const handleUpdateSetpoint = async (key: keyof SetpointValues, val: any) => {
     // Safety 1: I_SET_RANGE_CC (imax) cannot be set from PC (monitored from physical HMI only)
@@ -722,6 +771,32 @@ export const App: React.FC = () => {
       setSafetyModal({
         title: '⚠️ Safety Limit Warning',
         message: `⚠️ CV_VOLT (${val.toFixed(3)} V) exceeds V_MAX limit (${vMaxLimit.toFixed(2)} V)! Write blocked.`
+      });
+      setSetpoints((prev) => ({ ...prev }));
+      return;
+    }
+
+    // Safety 8: Single Power Supply V_SET_PS cannot exceed V_MAX_PS limit
+    const vMaxPsLimit = (telemetry.hardwareVmaxPs !== undefined && telemetry.hardwareVmaxPs > 0)
+      ? telemetry.hardwareVmaxPs
+      : (engSettings.vmaxPs || 60.0);
+    if (key === 'vsetPs' && vMaxPsLimit > 0 && typeof val === 'number' && val > vMaxPsLimit) {
+      setSafetyModal({
+        title: '⚠️ Safety Limit Warning',
+        message: `⚠️ V_SET_PS (${val.toFixed(3)} V) exceeds V_MAX_PS limit (${vMaxPsLimit.toFixed(2)} V)! Write blocked.`
+      });
+      setSetpoints((prev) => ({ ...prev }));
+      return;
+    }
+
+    // Safety 9: Single Power Supply I_SET_PS cannot exceed I_MAX_PS limit
+    const iMaxPsLimit = (telemetry.hardwareImaxPs !== undefined && telemetry.hardwareImaxPs > 0)
+      ? telemetry.hardwareImaxPs
+      : (engSettings.imaxPs || 30.0);
+    if (key === 'isetPs' && iMaxPsLimit > 0 && typeof val === 'number' && val > iMaxPsLimit) {
+      setSafetyModal({
+        title: '⚠️ Safety Limit Warning',
+        message: `⚠️ I_SET_PS (${val.toFixed(3)} A) exceeds I_MAX_PS limit (${iMaxPsLimit.toFixed(2)} A)! Write blocked.`
       });
       setSetpoints((prev) => ({ ...prev }));
       return;

@@ -1,4 +1,4 @@
-export type OperationMode = 'CV' | 'CC' | 'CR' | 'CP' | 'BAT TEST';
+export type OperationMode = 'CV' | 'CC' | 'CR' | 'CP' | 'BAT TEST' | 'PS_MODE';
 export type DeviceType = 'POWER_SUPPLY' | 'ELECTRONIC_LOAD';
 
 export type ProfileValidationStatus =
@@ -38,6 +38,8 @@ export interface SetpointValues {
   ah?: number;        // Ah capacity setpoint/value
   hrs?: number;       // Hours setpoint/value
   min?: number;       // Minutes setpoint/value
+  vsetPs?: number;    // V_SET_PS (4X 34) for Single Power Supply Mode
+  isetPs?: number;    // I_SET_PS (4X 36) for Single Power Supply Mode
 }
 
 export interface TelemetryPoint {
@@ -71,6 +73,11 @@ export interface TelemetryPoint {
   hardwareHrs?: number;         // Active HRS read from HMI (4X 23)
   hardwareMin?: number;         // Active MIN read from HMI (4X 25)
   hardwareBatSubMode?: 'CC' | 'CR'; // Active CC_CR_BAT_MODE read from HMI (0X 2)
+  hardwareVmaxPs?: number;      // Active V_MAX_PS read from HMI (4X 30)
+  hardwareImaxPs?: number;      // Active I_MAX_PS read from HMI (4X 32)
+  hardwareVsetPs?: number;      // Active V_SET_PS read from HMI (4X 34)
+  hardwareIsetPs?: number;      // Active I_SET_PS read from HMI (4X 36)
+  hardwareOutputPs?: boolean;   // Active START_STOP_PS read from HMI (0X 5)
   deviceResponding?: boolean; // True if slave device is acknowledging Modbus queries
   _debugMainTimestamp?: number;
   _debugIpcSentTimestamp?: number;
@@ -81,6 +88,8 @@ export interface EngineeringSettings {
   imax: number; // Maximum Current Safety Limit (A)
   pmax: number; // Maximum Power Safety Limit (W)
   rmax: number; // Maximum Resistance Safety Limit (Ω)
+  vmaxPs?: number; // Maximum Voltage Limit for PS Mode (V_MAX_PS - 4X 30, Read-Only from HW)
+  imaxPs?: number; // Maximum Current Limit for PS Mode (I_MAX_PS - 4X 32, Read-Only from HW)
   logIntervalMinutes?: number; // Data Logging Interval (minutes)
   logIntervalSeconds: number;  // Data Logging Interval (seconds)
 }
@@ -101,15 +110,24 @@ export interface ConnectionSettings {
   customOutputControlFc?: 5 | 6;
   wordSwap?: boolean; // true = Word-Swapped (Low Word First / CDAB), false = Big Endian (High Word First / ABCD)
   protocolType?: 'RS485' | 'RS232';
+  transportType?: 'SERIAL' | 'TCP'; // Serial COM vs Ethernet TCP/IP
+  tcpHost?: string;                 // Device IP Address (e.g. 192.168.1.100)
+  tcpPort?: number;                 // TCP Port (default 502)
+  tcpTimeoutMs?: number;            // Socket timeout in milliseconds
 }
 
 export interface RegisterOffsets {
-  mode: number;               // 4X 29 (INT, 1 Reg: 6=CV, 7=CC, 8=CR, 9=CP, 14=BAT TEST)
+  mode: number;               // 4X 29 (INT, 1 Reg: 6=CV, 7=CC, 8=CR, 9=CP, 14=BAT TEST, 15=PS_MODE)
   vset: number;               // 4X 5 (FLOAT, 2 Regs) - CV_VOLT
   vmaxLimit: number;          // 4X 7 (FLOAT, 2 Regs) - V_MAX
   imaxLimit: number;          // 4X 9 (FLOAT, 2 Regs) - I_MAX (ENG SETTINGS)
   pmaxLimit: number;          // 4X 11 (FLOAT, 2 Regs) - P_MAX
   rmaxLimit?: number;         // 4X 30 (FLOAT, 2 Regs) - R_MAX
+  vmaxPs?: number;            // 4X 30 (FLOAT, 2 Regs) - V_MAX_PS (ENG SETTINGS)
+  imaxPs?: number;            // 4X 32 (FLOAT, 2 Regs) - I_MAX_PS (ENG SETTINGS)
+  vsetPs?: number;            // 4X 34 (FLOAT, 2 Regs) - V_SET_PS
+  isetPs?: number;            // 4X 36 (FLOAT, 2 Regs) - I_SET_PS
+  outputCoilPs?: number;      // 0X 5 (Bit) - START_STOP_PS (1=ON, 0=OFF)
   ccImaxRange?: number;       // 4X 13 (FLOAT, 2 Regs) - I_SET_RANGE_CC (I MAX CC MODE)
   iset: number;               // 4X 15 (FLOAT, 2 Regs) - I_SET_ROW_CC (I TARGET / I LIMIT)
   isetRow?: number;           // 4X 15 (FLOAT, 2 Regs)
@@ -260,8 +278,13 @@ export const CLIENT_CSV_REGISTERS_BASE1: RegisterOffsets = {
   batSubModeCoil: 2,      // 0X 2 (Bit: 1=CR mode, 0=CC mode) - CC_CR_BAT_MODE
   popPowerExceedCoil: 3,  // 0X 3 (Bit: 1=HIGH POWER alarm popup) - POP_POWER_exceed
   popVoltExceedCoil: 4,   // 0X 4 (Bit: 1=HIGH VOLTAGE alarm popup) - POP_VOLT_exceed
-  mode: 29,               // 4X 29 (INT, 1 Reg: 6=CV, 7=CC, 8=CR, 9=CP, 14=BAT TEST) - MODE_SELECTION
+  mode: 29,               // 4X 29 (INT, 1 Reg: 6=CV, 7=CC, 8=CR, 9=CP, 14=BAT TEST, 15=PS_MODE) - MODE_SELECTION
   rmaxLimit: 30,          // 4X 30 (FLOAT, 2 Regs: 30 & 31) - R_MAX (ENG SETTINGS)
+  vmaxPs: 30,             // 4X 30 (FLOAT, 2 Regs: 30 & 31) - V_MAX_PS (ENG SETTINGS)
+  imaxPs: 32,             // 4X 32 (FLOAT, 2 Regs: 32 & 33) - I_MAX_PS (ENG SETTINGS)
+  vsetPs: 34,             // 4X 34 (FLOAT, 2 Regs: 34 & 35) - V_SET_PS
+  isetPs: 36,             // 4X 36 (FLOAT, 2 Regs: 36 & 37) - I_SET_PS
+  outputCoilPs: 5,        // 0X 5 (Bit) - START_STOP_PS (1=ON, 0=OFF)
   addressBase: 1
 };
 
@@ -288,6 +311,11 @@ export const CLIENT_CSV_REGISTERS_BASE0: RegisterOffsets = {
   popVoltExceedCoil: 3,   // 0X 4 -> Wire PDU 3
   mode: 28,               // 4X 29 -> Wire PDU 28
   rmaxLimit: 29,          // 4X 30 -> Wire PDU 29
+  vmaxPs: 29,             // 4X 30 -> Wire PDU 29
+  imaxPs: 31,             // 4X 32 -> Wire PDU 31
+  vsetPs: 33,             // 4X 34 -> Wire PDU 33
+  isetPs: 35,             // 4X 36 -> Wire PDU 35
+  outputCoilPs: 4,        // 0X 5 -> Wire PDU 4
   addressBase: 0
 };
 

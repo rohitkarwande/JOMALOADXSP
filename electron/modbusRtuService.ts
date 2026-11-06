@@ -581,19 +581,24 @@ export class ModbusRtuService {
 
   private async _executeConnectHardware(retryCount: number = 0): Promise<boolean> {
     try {
+      const isTcp = this.settings.transportType === 'TCP' || String(this.settings.port || '').startsWith('TCP:');
       const targetBaud = Number(this.settings.baudRate) || 9600;
       const targetSlaveId = Number(this.settings.slaveId) || 1;
       const targetPort = String(this.settings.port || 'COM4').trim();
+      const targetTcpHost = String(this.settings.tcpHost || targetPort.replace(/^TCP:/i, '').split(':')[0] || '192.168.1.100').trim();
+      const targetTcpPort = Number(this.settings.tcpPort) || (targetPort.includes(':') ? Number(targetPort.split(':')[1]) : 502) || 502;
+      const targetTimeout = Number(this.settings.tcpTimeoutMs) || 1000;
 
-      // 1. If already open on the exact same port and baud rate, reuse without closing/reopening!
+      // 1. If already open on the exact same port and baud/tcp endpoint, reuse without closing/reopening!
+      const currentEndpoint = isTcp ? `TCP:${targetTcpHost}:${targetTcpPort}` : targetPort;
       if (
         this.modbusClient &&
         this.modbusClient.isOpen &&
-        this.currentOpenPort === targetPort &&
-        this.currentOpenBaud === targetBaud
+        this.currentOpenPort === currentEndpoint &&
+        (isTcp || this.currentOpenBaud === targetBaud)
       ) {
         this.modbusClient.setID(targetSlaveId);
-        this.modbusClient.setTimeout(800);
+        this.modbusClient.setTimeout(isTcp ? targetTimeout : 800);
         this.instrumentModbusClient(this.modbusClient);
         this.isHardwareConnected = true;
         this.isCommFault = false;
@@ -611,9 +616,12 @@ export class ModbusRtuService {
       this.modbusClient = new ModbusRTU();
       this.instrumentModbusClient(this.modbusClient);
 
-      if (targetPort.startsWith('TCP:') || targetPort.includes('127.0.0.1') || targetPort.toLowerCase().includes('localhost')) {
-        const ip = targetPort.replace(/^TCP:/i, '').trim() || '127.0.0.1';
-        await this.modbusClient.connectTCP(ip, { port: 502 });
+      if (isTcp) {
+        console.log(`[Modbus TCP] Connecting to ${targetTcpHost}:${targetTcpPort} (Unit ID: ${targetSlaveId})...`);
+        await this.modbusClient.connectTCP(targetTcpHost, { port: targetTcpPort });
+        this.modbusClient.setTimeout(targetTimeout);
+        this.currentOpenPort = `TCP:${targetTcpHost}:${targetTcpPort}`;
+        this.currentOpenBaud = null;
       } else {
         const serialOpts = {
           baudRate: targetBaud,
@@ -621,11 +629,16 @@ export class ModbusRtuService {
           stopBits: Number(this.settings.stopBits) || 1,
           parity: this.settings.parity || 'none'
         };
+        console.log(`[Modbus RTU] Connecting to ${targetPort} at ${targetBaud} baud...`);
         await this.modbusClient.connectRTUBuffered(targetPort, serialOpts);
+        this.currentOpenPort = targetPort;
+        this.currentOpenBaud = targetBaud;
       }
 
       this.modbusClient.setID(targetSlaveId);
-      this.modbusClient.setTimeout(800);
+      if (!isTcp) {
+        this.modbusClient.setTimeout(800);
+      }
 
       // Flush any leftover hardware serial buffer bytes from prior sessions
       try {
@@ -637,8 +650,6 @@ export class ModbusRtuService {
         }
       } catch (e) {}
 
-      this.currentOpenPort = targetPort;
-      this.currentOpenBaud = targetBaud;
       this.isHardwareConnected = true;
       this.isCommFault = false;
       this.consecutiveErrors = 0;
@@ -726,11 +737,31 @@ export class ModbusRtuService {
 
       // Read coils for submode on connect
       try {
-        const resC = await this.modbusClient.readCoils(baseH, 4);
+        const resC = await this.modbusClient.readCoils(baseH, 5);
         if (resC && resC.data && resC.data.length >= 2) {
           this.setpoints.batTestSubMode = resC.data[1] ? 'CR' : 'CC';
         }
       } catch (eC) {}
+
+      // Read holding registers 30-37 for Single Power Supply limits & setpoints (V_MAX_PS, I_MAX_PS, V_SET_PS, I_SET_PS)
+      try {
+        const regs = this.settings.registers;
+        const psStartAddr = regs.vmaxPs ?? (isBase1 ? 30 : 29);
+        const res3 = await this.modbusClient.readHoldingRegisters(psStartAddr, 8);
+        if (res3 && res3.data && res3.data.length >= 8) {
+          const vmaxPs = this.readFloatFromBuffer(res3.data, 0); // 4X 30
+          const imaxPs = this.readFloatFromBuffer(res3.data, 2); // 4X 32
+          const vsetPs = this.readFloatFromBuffer(res3.data, 4); // 4X 34
+          const isetPs = this.readFloatFromBuffer(res3.data, 6); // 4X 36
+
+          if (!isNaN(vmaxPs) && vmaxPs > 0) this.engSettings.vmaxPs = vmaxPs;
+          if (!isNaN(imaxPs) && imaxPs > 0) this.engSettings.imaxPs = imaxPs;
+          if (!isNaN(vsetPs) && vsetPs >= 0) this.setpoints.vsetPs = vsetPs;
+          if (!isNaN(isetPs) && isetPs >= 0) this.setpoints.isetPs = isetPs;
+
+          console.log(`[Modbus Connect Sync] Synced Single PS registers: VmaxPs=${vmaxPs}V, ImaxPs=${imaxPs}A, VsetPs=${vsetPs}V, IsetPs=${isetPs}A`);
+        }
+      } catch (e3) {}
     } catch (err) {
       console.warn('[RS485 Connect Sync] Initial setpoint read warning:', err);
     }
@@ -895,7 +926,7 @@ export class ModbusRtuService {
 
     const currentSession = this.connectionSessionId;
     if (!this.settings.isSimulator && this.modbusClient && this.modbusClient.isOpen) {
-      const modeMap: Record<OperationMode, number> = { CV: 6, CC: 7, CR: 8, CP: 9, 'BAT TEST': 14 };
+      const modeMap: Record<OperationMode, number> = { CV: 6, CC: 7, CR: 8, CP: 9, 'BAT TEST': 14, PS_MODE: 15 };
       const modeVal = modeMap[mode] ?? 6;
       const modeAddr = this.settings.registers.mode ?? 28;
       const res = await this.serialLock.runExclusive(
@@ -1080,7 +1111,7 @@ export class ModbusRtuService {
 
     if (this.settings.isSimulator || !this.modbusClient || !this.modbusClient.isOpen) {
       if (this.settings.isSimulator) {
-        const modeMap: Record<OperationMode, number> = { CV: 6, CC: 7, CR: 8, CP: 9, 'BAT TEST': 14 };
+        const modeMap: Record<OperationMode, number> = { CV: 6, CC: 7, CR: 8, CP: 9, 'BAT TEST': 14, PS_MODE: 15 };
         const modeSel = modeMap[this.currentMode] ?? 6;
         const result: Record<string, { value: number | boolean; formatted: string }> = {
           V_MON: { value: 0, formatted: '0.000 V' },
@@ -1102,7 +1133,12 @@ export class ModbusRtuService {
           POP_POWER_exceed: { value: false, formatted: '0 (NORMAL)' },
           POP_VOLT_exceed: { value: false, formatted: '0 (NORMAL)' },
           MODE_SELECTION: { value: modeSel, formatted: `${modeSel} (${this.currentMode})` },
-          R_MAX: { value: this.engSettings.rmax, formatted: `${this.engSettings.rmax.toFixed(2)} Ω` }
+          R_MAX: { value: this.engSettings.rmax, formatted: `${this.engSettings.rmax.toFixed(2)} Ω` },
+          V_MAX_PS: { value: this.engSettings.vmaxPs || 60.0, formatted: `${(this.engSettings.vmaxPs || 60.0).toFixed(2)} V` },
+          I_MAX_PS: { value: this.engSettings.imaxPs || 30.0, formatted: `${(this.engSettings.imaxPs || 30.0).toFixed(2)} A` },
+          V_SET_PS: { value: this.setpoints.vsetPs || 12.0, formatted: `${(this.setpoints.vsetPs || 12.0).toFixed(3)} V` },
+          I_SET_PS: { value: this.setpoints.isetPs || 5.0, formatted: `${(this.setpoints.isetPs || 5.0).toFixed(3)} A` },
+          START_STOP_PS: { value: this.outputState, formatted: this.outputState ? '1 (ON)' : '0 (OFF)' }
         };
         return { success: true, registers: result };
       }
@@ -1194,14 +1230,15 @@ export class ModbusRtuService {
         const popPower = Boolean(c[2]);
         const popVolt = Boolean(c[3]);
 
-        const modeMap: Record<number, string> = { 6: '6 (CV)', 7: '7 (CC)', 8: '8 (CR)', 9: '9 (CP)', 14: '14 (BAT)' };
+        const modeMap: Record<number, string> = { 6: '6 (CV)', 7: '7 (CC)', 8: '8 (CR)', 9: '9 (CP)', 14: '14 (BAT)', 15: '15 (PS MODE)' };
 
         // Two-way synchronization with app state if hardware changed on HMI:
         if (this.outputState !== startStop) {
           this.outputState = startStop;
           this.outputConfirmedState = startStop ? 'ON' : 'OFF';
         }
-        if (modeSel === 6) this.currentMode = 'CV';
+        if (modeSel === 15) this.currentMode = 'PS_MODE';
+        else if (modeSel === 6) this.currentMode = 'CV';
         else if (modeSel === 7) this.currentMode = 'CC';
         else if (modeSel === 8) this.currentMode = 'CR';
         else if (modeSel === 9) this.currentMode = 'CP';
@@ -1221,6 +1258,34 @@ export class ModbusRtuService {
         if (!isNaN(iMax) && iMax > 0) this.engSettings.imax = iMax;
         if (!isNaN(pMax) && pMax > 0) this.engSettings.pmax = pMax;
         if (!isNaN(rMax) && rMax > 0) this.engSettings.rmax = rMax;
+
+        let vmaxPs = this.engSettings.vmaxPs || 60.0;
+        let imaxPs = this.engSettings.imaxPs || 30.0;
+        let vsetPs = this.setpoints.vsetPs || 12.0;
+        let isetPs = this.setpoints.isetPs || 5.0;
+        let startStopPs = startStop;
+
+        try {
+          const psStartAddr = this.settings.registers.vmaxPs ?? (isBase1 ? 30 : 29);
+          const resPs = await this.modbusClient!.readHoldingRegisters(psStartAddr, 8);
+          if (resPs && resPs.data && resPs.data.length >= 8) {
+            const vPs = this.readFloatFromBuffer(resPs.data, 0);
+            const iPs = this.readFloatFromBuffer(resPs.data, 2);
+            const vsPs = this.readFloatFromBuffer(resPs.data, 4);
+            const isPs = this.readFloatFromBuffer(resPs.data, 6);
+            if (!isNaN(vPs) && vPs > 0) { vmaxPs = vPs; this.engSettings.vmaxPs = vPs; }
+            if (!isNaN(iPs) && iPs > 0) { imaxPs = iPs; this.engSettings.imaxPs = iPs; }
+            if (!isNaN(vsPs) && vsPs >= 0) { vsetPs = vsPs; this.setpoints.vsetPs = vsPs; }
+            if (!isNaN(isPs) && isPs >= 0) { isetPs = isPs; this.setpoints.isetPs = isPs; }
+          }
+          const psCoilAddr = this.settings.registers.outputCoilPs ?? (isBase1 ? 5 : 4);
+          const resCoilPs = await this.modbusClient!.readCoils(psCoilAddr, 1);
+          if (resCoilPs && resCoilPs.data && resCoilPs.data.length > 0) {
+            startStopPs = Boolean(resCoilPs.data[0]);
+          }
+        } catch {
+          // If PS block read fails, use current in-memory values
+        }
 
         const result: Record<string, { value: number | boolean; formatted: string }> = {
           V_MON: { value: vmon, formatted: `${vmon.toFixed(3)} V` },
@@ -1242,7 +1307,12 @@ export class ModbusRtuService {
           POP_POWER_exceed: { value: popPower, formatted: popPower ? '1 (ALARM)' : '0 (NORMAL)' },
           POP_VOLT_exceed: { value: popVolt, formatted: popVolt ? '1 (ALARM)' : '0 (NORMAL)' },
           MODE_SELECTION: { value: modeSel, formatted: modeMap[modeSel] || String(modeSel) },
-          R_MAX: { value: rMax, formatted: `${rMax.toFixed(2)} Ω` }
+          R_MAX: { value: rMax, formatted: `${rMax.toFixed(2)} Ω` },
+          V_MAX_PS: { value: vmaxPs, formatted: `${vmaxPs.toFixed(2)} V` },
+          I_MAX_PS: { value: imaxPs, formatted: `${imaxPs.toFixed(2)} A` },
+          V_SET_PS: { value: vsetPs, formatted: `${vsetPs.toFixed(3)} V` },
+          I_SET_PS: { value: isetPs, formatted: `${isetPs.toFixed(3)} A` },
+          START_STOP_PS: { value: startStopPs, formatted: startStopPs ? '1 (ON)' : '0 (OFF)' }
         };
 
         return { success: true, registers: result };
@@ -1476,6 +1546,37 @@ export class ModbusRtuService {
             } catch (e) {}
           }
 
+          // Single Power Supply Mode Setpoints: V_SET_PS (4X 34) and I_SET_PS (4X 36)
+          if (newSetpoints.vsetPs !== undefined && regs.vsetPs !== undefined) {
+            console.log(`[Modbus] Writing V_SET_PS: ${newSetpoints.vsetPs} to address ${regs.vsetPs}`);
+            await this.writeFloatRegisters(regs.vsetPs, newSetpoints.vsetPs);
+            this.setpoints.vsetPs = newSetpoints.vsetPs;
+
+            await new Promise((r) => setTimeout(r, 60));
+            try {
+              const vpsRes = await this.modbusClient!.readHoldingRegisters(regs.vsetPs, 2);
+              if (vpsRes && vpsRes.data && vpsRes.data.length >= 2) {
+                const verifiedVps = this.readFloatFromBuffer(vpsRes.data, 0);
+                if (!isNaN(verifiedVps) && verifiedVps >= 0) this.setpoints.vsetPs = verifiedVps;
+              }
+            } catch (e) {}
+          }
+
+          if (newSetpoints.isetPs !== undefined && regs.isetPs !== undefined) {
+            console.log(`[Modbus] Writing I_SET_PS: ${newSetpoints.isetPs} to address ${regs.isetPs}`);
+            await this.writeFloatRegisters(regs.isetPs, newSetpoints.isetPs);
+            this.setpoints.isetPs = newSetpoints.isetPs;
+
+            await new Promise((r) => setTimeout(r, 60));
+            try {
+              const ipsRes = await this.modbusClient!.readHoldingRegisters(regs.isetPs, 2);
+              if (ipsRes && ipsRes.data && ipsRes.data.length >= 2) {
+                const verifiedIps = this.readFloatFromBuffer(ipsRes.data, 0);
+                if (!isNaN(verifiedIps) && verifiedIps >= 0) this.setpoints.isetPs = verifiedIps;
+              }
+            } catch (e) {}
+          }
+
           return { success: true };
         } catch (err: any) {
           console.error('RS485 Setpoint Write Failure:', err);
@@ -1668,26 +1769,27 @@ export class ModbusRtuService {
             this.modbusClient!.setID(Number(this.settings.slaveId) || 1);
             const regs = this.settings.registers;
             const fc = this.activeProfile.outputControlFc || 5;
+            const targetCoil = (this.currentMode === 'PS_MODE') ? (regs.outputCoilPs ?? 4) : (regs.outputCoil ?? 0);
 
             if (fc === 5) {
               try {
-                await this.modbusClient!.writeCoil(regs.outputCoil ?? 0, state);
+                await this.modbusClient!.writeCoil(targetCoil, state);
               } catch (coilErr) {
                 // Fallback: If device is holding register only (FC06), write to holding register
-                await this.modbusClient!.writeRegister(regs.outputCoil ?? 0, state ? 1 : 0);
+                await this.modbusClient!.writeRegister(targetCoil, state ? 1 : 0);
               }
             } else {
-              await this.modbusClient!.writeRegister(regs.outputCoil ?? 0, state ? 1 : 0);
+              await this.modbusClient!.writeRegister(targetCoil, state ? 1 : 0);
             }
             return { success: true };
           } catch (err: any) {
-            console.error('RS485 Output Control Error:', err);
+            console.error('RS485/TCP Output Control Error:', err);
             return { success: false, error: this.formatModbusError('Hardware Output Command', err) };
           }
         },
         5,
         () => this.connectionSessionId !== currentSession,
-        { command: `SET_OUTPUT (${state ? 'ON' : 'OFF'})`, readWrite: 'WRITE', fc: String(this.activeProfile.outputControlFc || 5), address: this.settings.registers.outputCoil ?? 0 },
+        { command: `SET_OUTPUT (${state ? 'ON' : 'OFF'} mode=${this.currentMode})`, readWrite: 'WRITE', fc: String(this.activeProfile.outputControlFc || 5), address: (this.currentMode === 'PS_MODE') ? (this.settings.registers.outputCoilPs ?? 4) : (this.settings.registers.outputCoil ?? 0) },
         currentSession
       );
 
@@ -1803,6 +1905,11 @@ export class ModbusRtuService {
       if (this.setpoints.batTestSubMode === 'CR') return `${this.setpoints.rset.toFixed(2)} Ω`;
       return `${this.setpoints.iset.toFixed(3)} A`;
     }
+    if (this.currentMode === 'PS_MODE') {
+      const v = this.setpoints.vsetPs ?? 12.0;
+      const i = this.setpoints.isetPs ?? 3.0;
+      return `V: ${v.toFixed(3)} V | I: ${i.toFixed(3)} A`;
+    }
     return `${this.setpoints.cv.toFixed(3)} V`;
   }
 
@@ -1831,6 +1938,7 @@ export class ModbusRtuService {
 
         let b1: number[] = [];
         let b2: number[] = [];
+        let b3: number[] = [];
         let c: boolean[] = [];
 
         try {
@@ -1844,15 +1952,24 @@ export class ModbusRtuService {
           b2 = res2.data;
           await new Promise((r) => setTimeout(r, 15));
 
-          // Block 3: Coils 0..3 (START_STOP, CC_CR_BAT_MODE, POP_POWER_EXCEED, POP_VOLT_EXCEED)
-          const resC = await this.modbusClient.readCoils(baseC, 4);
+          // Block 3: Registers 30..37 (V_MAX_PS, I_MAX_PS, V_SET_PS, I_SET_PS)
+          try {
+            const regs = this.settings.registers;
+            const psStart = regs.vmaxPs ?? (isBase1 ? 30 : 29);
+            const res3 = await this.modbusClient.readHoldingRegisters(psStart, 8);
+            b3 = res3.data;
+          } catch (e3) {}
+          await new Promise((r) => setTimeout(r, 15));
+
+          // Block 4: Coils 0..4 (START_STOP, CC_CR_BAT_MODE, POP_POWER_EXCEED, POP_VOLT_EXCEED, START_STOP_PS)
+          const resC = await this.modbusClient.readCoils(baseC, 5);
           c = resC.data;
         } catch (blockErr) {
           // Safe individual fallback if 16-register block is rejected by firmware
           console.warn('[RS485 Telemetry] Block read failed, fallback to individual reads:', blockErr);
           const allHolding: number[] = [];
           let consecutiveFailures = 0;
-          for (let i = 0; i < 31; i++) {
+          for (let i = 0; i < 38; i++) {
             if (this.connectionSessionId !== currentSession || !this.modbusClient || !this.modbusClient.isOpen) {
               throw new Error('Connection closed during telemetry individual read fallback');
             }
@@ -1872,11 +1989,12 @@ export class ModbusRtuService {
           }
           b1 = allHolding.slice(0, 16);
           b2 = allHolding.slice(16, 31);
+          b3 = allHolding.slice(29, 37);
           try {
-            const resC = await this.modbusClient.readCoils(baseC, 4);
+            const resC = await this.modbusClient.readCoils(baseC, 5);
             c = resC.data;
           } catch {
-            c = [false, false, false, false];
+            c = [false, false, false, false, false];
           }
         }
 
@@ -1906,13 +2024,21 @@ export class ModbusRtuService {
         const batSubMode: 'CC' | 'CR' = Boolean(c && c.length >= 2 ? c[1] : false) ? 'CR' : 'CC';
         const popPowerExceed = Boolean(c && c.length >= 3 ? c[2] : false);
         const popVoltExceed = Boolean(c && c.length >= 4 ? c[3] : false);
+        const hwOutputStatePs = Boolean(c && c.length >= 5 ? c[4] : false);
 
-        // Sync Output state with physical HMI coil
-        if (this.outputState !== hwOutputState) {
-          console.log(`[RS485 HMI Sync] Hardware Output changed on HMI to: ${hwOutputState ? 'ON' : 'OFF'}`);
-          this.outputState = hwOutputState;
-          this.outputConfirmedState = hwOutputState ? 'ON' : 'OFF';
-          if (!hwOutputState && this.currentMode === 'BAT TEST') {
+        // Parse Single Power Supply Mode Holding Registers (4X 30..37)
+        const vMaxPsRaw = b3 && b3.length >= 2 ? this.readFloatFromBuffer(b3, 0) : undefined;
+        const iMaxPsRaw = b3 && b3.length >= 4 ? this.readFloatFromBuffer(b3, 2) : undefined;
+        const vSetPsRaw = b3 && b3.length >= 6 ? this.readFloatFromBuffer(b3, 4) : undefined;
+        const iSetPsRaw = b3 && b3.length >= 8 ? this.readFloatFromBuffer(b3, 6) : undefined;
+
+        // Sync Output state with physical HMI coil (Coil 5 for PS Mode, Coil 1 for Load modes)
+        const activeHwOutput = (this.currentMode === 'PS_MODE') ? hwOutputStatePs : hwOutputState;
+        if (this.outputState !== activeHwOutput) {
+          console.log(`[Modbus HMI Sync] Hardware Output changed on HMI to: ${activeHwOutput ? 'ON' : 'OFF'} (mode=${this.currentMode})`);
+          this.outputState = activeHwOutput;
+          this.outputConfirmedState = activeHwOutput ? 'ON' : 'OFF';
+          if (!activeHwOutput && this.currentMode === 'BAT TEST') {
             this.batTestStartTime = null;
           }
         }
@@ -1920,10 +2046,10 @@ export class ModbusRtuService {
         // Sync Submode
         this.setpoints.batTestSubMode = batSubMode;
 
-        // Sync Mode
+        // Sync Mode (15 = PS_MODE, 6 = CV)
         let hardwareMode: OperationMode | undefined = undefined;
         if (typeof modeSel === 'number') {
-          const modeMap: Record<number, OperationMode> = { 6: 'CV', 7: 'CC', 8: 'CR', 9: 'CP', 14: 'BAT TEST' };
+          const modeMap: Record<number, OperationMode> = { 6: 'CV', 7: 'CC', 8: 'CR', 9: 'CP', 14: 'BAT TEST', 15: 'PS_MODE' };
           if (modeMap[modeSel]) {
             hardwareMode = modeMap[modeSel];
             this.currentMode = hardwareMode;
@@ -1939,6 +2065,29 @@ export class ModbusRtuService {
         if (!isNaN(iMax) && iMax > 0) { hardwareImax = iMax; this.engSettings.imax = iMax; }
         if (!isNaN(pMax) && pMax > 0) { hardwarePmax = pMax; this.engSettings.pmax = pMax; }
         if (rMax !== undefined && !isNaN(rMax) && rMax > 0) { hardwareRmax = rMax; this.engSettings.rmax = rMax; }
+
+        // Sync Single Power Supply Limits & Setpoints
+        let hardwareVmaxPs: number | undefined = this.engSettings.vmaxPs;
+        let hardwareImaxPs: number | undefined = this.engSettings.imaxPs;
+        let hardwareVsetPs: number | undefined = this.setpoints.vsetPs;
+        let hardwareIsetPs: number | undefined = this.setpoints.isetPs;
+
+        if (vMaxPsRaw !== undefined && !isNaN(vMaxPsRaw) && vMaxPsRaw > 0) {
+          hardwareVmaxPs = vMaxPsRaw;
+          this.engSettings.vmaxPs = vMaxPsRaw;
+        }
+        if (iMaxPsRaw !== undefined && !isNaN(iMaxPsRaw) && iMaxPsRaw > 0) {
+          hardwareImaxPs = iMaxPsRaw;
+          this.engSettings.imaxPs = iMaxPsRaw;
+        }
+        if (vSetPsRaw !== undefined && !isNaN(vSetPsRaw) && vSetPsRaw >= 0) {
+          hardwareVsetPs = vSetPsRaw;
+          this.setpoints.vsetPs = vSetPsRaw;
+        }
+        if (iSetPsRaw !== undefined && !isNaN(iSetPsRaw) && iSetPsRaw >= 0) {
+          hardwareIsetPs = iSetPsRaw;
+          this.setpoints.isetPs = iSetPsRaw;
+        }
 
         // Sync Setpoints from HMI
         let hardwareIrange: number | undefined = undefined;
@@ -2012,6 +2161,11 @@ export class ModbusRtuService {
           hardwareHrs,
           hardwareMin,
           hardwareBatSubMode: batSubMode,
+          hardwareVmaxPs,
+          hardwareImaxPs,
+          hardwareVsetPs,
+          hardwareIsetPs,
+          hardwareOutputPs: hwOutputStatePs,
           isStale: false,
           deviceResponding: true,
           _debugMainTimestamp: Date.now()
@@ -2072,6 +2226,11 @@ export class ModbusRtuService {
         hardwareHrs: this.setpoints.hrs,
         hardwareMin: this.setpoints.min,
         hardwareBatSubMode: this.setpoints.batTestSubMode,
+        hardwareVmaxPs: this.engSettings.vmaxPs ?? 60.0,
+        hardwareImaxPs: this.engSettings.imaxPs ?? 30.0,
+        hardwareVsetPs: this.setpoints.vsetPs ?? 12.0,
+        hardwareIsetPs: this.setpoints.isetPs ?? 3.0,
+        hardwareOutputPs: false,
         isStale: false
       };
     }
@@ -2086,6 +2245,17 @@ export class ModbusRtuService {
     const noiseI = (Math.random() - 0.5) * 0.12 + waveI;
 
     switch (this.currentMode) {
+      case 'PS_MODE': {
+        const vset = this.setpoints.vsetPs ?? 12.0;
+        const iset = this.setpoints.isetPs ?? 3.0;
+        const vmaxPs = this.engSettings.vmaxPs ?? 60.0;
+        const imaxPs = this.engSettings.imaxPs ?? 30.0;
+        vmon = Math.max(0, Math.min(vmaxPs, vset + noiseV));
+        const rLoadPS = 4.0 + Math.sin(timeMs / 2500) * 0.5;
+        imon = Math.min(Math.min(imaxPs, iset), Math.max(0, (vmon / rLoadPS) + noiseI));
+        break;
+      }
+
       case 'CV':
         vmon = Math.max(0, Math.min(this.engSettings.vmax, this.setpoints.cv + noiseV));
         const rLoadCV = 4.8 + Math.cos(timeMs / 2500) * 0.4;
@@ -2168,6 +2338,11 @@ export class ModbusRtuService {
       hardwareHrs: hrs,
       hardwareMin: min,
       hardwareBatSubMode: this.setpoints.batTestSubMode,
+      hardwareVmaxPs: this.engSettings.vmaxPs ?? 60.0,
+      hardwareImaxPs: this.engSettings.imaxPs ?? 30.0,
+      hardwareVsetPs: this.setpoints.vsetPs ?? 12.0,
+      hardwareIsetPs: this.setpoints.isetPs ?? 3.0,
+      hardwareOutputPs: this.currentMode === 'PS_MODE' ? this.outputState : false,
       isStale: false
     };
   }

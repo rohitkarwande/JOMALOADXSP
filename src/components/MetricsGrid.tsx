@@ -38,13 +38,21 @@ export const MetricsGrid: React.FC<MetricsGridProps> = ({
   };
 
   const activeBatSubMode = telemetry.hardwareBatSubMode ?? setpoints.batTestSubMode;
-  const modeLabel = currentMode === 'BAT TEST' ? `BAT TEST (${activeBatSubMode} MODE)` : `${currentMode} MODE`;
+  const modeLabel = currentMode === 'BAT TEST'
+    ? `BAT TEST (${activeBatSubMode} MODE)`
+    : (currentMode === 'PS_MODE' ? 'SINGLE POWER SUPPLY MODE' : `${currentMode} MODE`);
 
   // Inline Safety Limit Exceeded Checks matching Diagnostic Panel conventions
   const vmax = (telemetry.hardwareVmax !== undefined && telemetry.hardwareVmax > 0) ? telemetry.hardwareVmax : (engSettings?.vmax ?? 60.0);
   const imax = (telemetry.hardwareImax !== undefined && telemetry.hardwareImax > 0) ? telemetry.hardwareImax : (engSettings?.imax ?? 30.0);
   const rmax = (telemetry.hardwareRmax !== undefined && telemetry.hardwareRmax > 0) ? telemetry.hardwareRmax : (engSettings?.rmax ?? 100.0);
   const pmax = (telemetry.hardwarePmax !== undefined && telemetry.hardwarePmax > 0) ? telemetry.hardwarePmax : (engSettings?.pmax ?? 5000.0);
+
+  // Single Power Supply Mode Limits (Read-Only from Hardware)
+  const vmaxPs = (telemetry.hardwareVmaxPs !== undefined && telemetry.hardwareVmaxPs > 0) ? telemetry.hardwareVmaxPs : (engSettings?.vmaxPs ?? 60.0);
+  const imaxPs = (telemetry.hardwareImaxPs !== undefined && telemetry.hardwareImaxPs > 0) ? telemetry.hardwareImaxPs : (engSettings?.imaxPs ?? 30.0);
+  const isVsetPsExceeded = currentMode === 'PS_MODE' && (setpoints.vsetPs ?? 0) > vmaxPs;
+  const isIsetPsExceeded = currentMode === 'PS_MODE' && (setpoints.isetPs ?? 0) > imaxPs;
 
   const isCvExceeded = setpoints.cv > vmax;
   const activeIrange = (telemetry.hardwareIrange !== undefined && telemetry.hardwareIrange > 0) ? telemetry.hardwareIrange : (setpoints.imax > 0 ? setpoints.imax : imax);
@@ -144,6 +152,87 @@ export const MetricsGrid: React.FC<MetricsGridProps> = ({
           <Sliders size={14} style={{ color: 'var(--accent-cyan)' }} />
           <span>{currentMode === 'BAT TEST' ? `BAT TEST (${setpoints.batTestSubMode} MODE)` : `${currentMode} MODE`} SETPOINTS & LIMITS</span>
         </div>
+
+        {/* ========================================================================= */}
+        {/* SINGLE POWER SUPPLY MODE: V_SET_PS (4X 34) & I_SET_PS (4X 36)             */}
+        {/* ========================================================================= */}
+        {currentMode === 'PS_MODE' && (
+          <>
+            {/* V_SET_PS Input */}
+            <div className="setpoint-input-wrapper" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', minWidth: 0 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', width: '130px', minWidth: '130px', flexShrink: 0 }}>
+                  <span className="setpoint-label" style={{ color: '#0284c7', fontWeight: 800 }}>V_SET_PS (V):</span>
+                  <span style={{ fontSize: '0.68rem', color: '#0369a1', fontWeight: 700 }}>4X 34 (32-Bit Float)</span>
+                </div>
+                <KeyboardNumericInput
+                  step={0.5}
+                  precision={3}
+                  disabled={isFreezed}
+                  commitOnEnterOnly={true}
+                  showEnterButton={true}
+                  style={{
+                    flex: 1,
+                    border: isVsetPsExceeded ? '2px solid #ef4444' : '1.5px solid #0284c7',
+                    background: isVsetPsExceeded ? '#fef2f2' : undefined
+                  }}
+                  value={setpoints.vsetPs ?? 12.0}
+                  onChange={(val) => onUpdateSetpoint('vsetPs', val)}
+                />
+                <span className="setpoint-unit">V</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingLeft: '4px', fontSize: '0.75rem', color: '#64748b' }}>
+                <span>Hardware Limit: &le; V_MAX_PS ({vmaxPs.toFixed(2)} V)</span>
+                <span style={{ fontWeight: 700, color: '#0284c7' }}>
+                  Live Readback: {(telemetry.hardwareVsetPs !== undefined ? telemetry.hardwareVsetPs : (setpoints.vsetPs ?? 12.0)).toFixed(3)} V
+                </span>
+              </div>
+              {isVsetPsExceeded && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', fontWeight: 800 }}>
+                  <AlertCircle size={14} />
+                  <span>⚠️ EXCEEDS V_MAX_PS LIMIT ({vmaxPs.toFixed(2)} V)!</span>
+                </div>
+              )}
+            </div>
+
+            {/* I_SET_PS Input */}
+            <div className="setpoint-input-wrapper" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', minWidth: 0 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', width: '130px', minWidth: '130px', flexShrink: 0 }}>
+                  <span className="setpoint-label" style={{ color: '#16a34a', fontWeight: 800 }}>I_SET_PS (A):</span>
+                  <span style={{ fontSize: '0.68rem', color: '#15803d', fontWeight: 700 }}>4X 36 (32-Bit Float)</span>
+                </div>
+                <KeyboardNumericInput
+                  step={0.1}
+                  precision={3}
+                  disabled={isFreezed}
+                  commitOnEnterOnly={true}
+                  showEnterButton={true}
+                  style={{
+                    flex: 1,
+                    border: isIsetPsExceeded ? '2px solid #ef4444' : '1.5px solid #16a34a',
+                    background: isIsetPsExceeded ? '#fef2f2' : undefined
+                  }}
+                  value={setpoints.isetPs ?? 3.0}
+                  onChange={(val) => onUpdateSetpoint('isetPs', val)}
+                />
+                <span className="setpoint-unit">A</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingLeft: '4px', fontSize: '0.75rem', color: '#64748b' }}>
+                <span>Hardware Limit: &le; I_MAX_PS ({imaxPs.toFixed(2)} A)</span>
+                <span style={{ fontWeight: 700, color: '#16a34a' }}>
+                  Live Readback: {(telemetry.hardwareIsetPs !== undefined ? telemetry.hardwareIsetPs : (setpoints.isetPs ?? 3.0)).toFixed(3)} A
+                </span>
+              </div>
+              {isIsetPsExceeded && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', fontWeight: 800 }}>
+                  <AlertCircle size={14} />
+                  <span>⚠️ EXCEEDS I_MAX_PS LIMIT ({imaxPs.toFixed(2)} A)!</span>
+                </div>
+              )}
+            </div>
+          </>
+        )}
 
         {/* ========================================================================= */}
         {/* CV MODE: CV SET (CV_VOLT, 4X 5 / Wire 4) & I LIMIT (I_SET_ROW_CC, 4X 15) */}

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { EngineeringSettings } from '../types/scada';
-import { ShieldAlert, Check, Save } from 'lucide-react';
+import { ShieldAlert, Check, Save, Zap, Lock } from 'lucide-react';
 import { JomaLogo } from './JomaLogo';
 import { KeyboardNumericInput } from './KeyboardNumericInput';
 
@@ -345,6 +345,116 @@ export const EngSettings: React.FC<EngSettingsProps> = ({
                   }));
                 }}
               />
+            </div>
+          </div>
+
+          {/* Dedicated Section for Single Power Supply Mode (Read-Only from Hardware) */}
+          <div style={{
+            gridColumn: 'span 2',
+            marginTop: '8px',
+            background: '#f0f9ff',
+            border: '2px solid #0284c7',
+            borderRadius: '8px',
+            padding: '20px 24px',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.05)'
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              borderBottom: '2px solid #bae6fd',
+              paddingBottom: '10px',
+              marginBottom: '20px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Zap size={22} style={{ color: '#0284c7' }} />
+                <span style={{
+                  fontFamily: "'Times New Roman', serif",
+                  fontWeight: 800,
+                  fontSize: '1.5rem',
+                  color: '#0369a1',
+                  letterSpacing: '1px'
+                }}>
+                  SINGLE POWER SUPPLY LIMITS (PS MODE)
+                </span>
+              </div>
+              <span style={{
+                fontSize: '0.8rem',
+                fontWeight: 800,
+                background: '#e0f2fe',
+                color: '#0369a1',
+                padding: '4px 12px',
+                borderRadius: '20px',
+                border: '1px solid #7dd3fc',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                <Lock size={12} />
+                READ ONLY (FROM HARDWARE)
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
+              {/* V_MAX_PS Display */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', minWidth: '150px' }}>
+                  <span style={{ fontFamily: "'Times New Roman', serif", fontWeight: 700, fontSize: '1.8rem', color: '#000000' }}>
+                    V_MAX_PS :
+                  </span>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0284c7' }}>
+                    4X 30 (Length: 2, 32-Bit Float)
+                  </span>
+                </div>
+                <div style={{
+                  flex: 1,
+                  background: '#000000',
+                  borderRadius: '4px',
+                  padding: '10px 16px',
+                  textAlign: 'center',
+                  boxShadow: 'inset 0 0 10px rgba(0,0,0,0.9)'
+                }}>
+                  <span style={{
+                    color: '#38bdf8',
+                    fontFamily: "'Times New Roman', serif",
+                    fontSize: '2.2rem',
+                    fontWeight: 700
+                  }}>
+                    {((localEng.vmaxPs !== undefined && localEng.vmaxPs > 0) ? localEng.vmaxPs : 60.0).toFixed(2)}
+                  </span>
+                  <span style={{ color: '#94a3b8', fontSize: '1.1rem', marginLeft: '6px', fontWeight: 700 }}>V</span>
+                </div>
+              </div>
+
+              {/* I_MAX_PS Display */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', minWidth: '150px' }}>
+                  <span style={{ fontFamily: "'Times New Roman', serif", fontWeight: 700, fontSize: '1.8rem', color: '#000000' }}>
+                    I_MAX_PS :
+                  </span>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0284c7' }}>
+                    4X 32 (Length: 2, 32-Bit Float)
+                  </span>
+                </div>
+                <div style={{
+                  flex: 1,
+                  background: '#000000',
+                  borderRadius: '4px',
+                  padding: '10px 16px',
+                  textAlign: 'center',
+                  boxShadow: 'inset 0 0 10px rgba(0,0,0,0.9)'
+                }}>
+                  <span style={{
+                    color: '#4ade80',
+                    fontFamily: "'Times New Roman', serif",
+                    fontSize: '2.2rem',
+                    fontWeight: 700
+                  }}>
+                    {((localEng.imaxPs !== undefined && localEng.imaxPs > 0) ? localEng.imaxPs : 30.0).toFixed(2)}
+                  </span>
+                  <span style={{ color: '#94a3b8', fontSize: '1.1rem', marginLeft: '6px', fontWeight: 700 }}>A</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
