@@ -1,0 +1,77 @@
+import React, { useEffect, useState } from 'react';
+import { Activity, Clock, Cpu } from 'lucide-react';
+import { OperationMode } from '../types/scada';
+import { JomaLogo } from './JomaLogo';
+
+interface HeaderProps {
+  activeMode: OperationMode;
+  batTestSubMode?: 'CC' | 'CR';
+  connectionStatus: 'CONNECTED' | 'DISCONNECTED';
+  activeTab: 'dashboard' | 'sequence' | 'history' | 'settings' | 'engSettings';
+  protocolType?: 'RS485' | 'RS232';
+}
+
+export const Header: React.FC<HeaderProps> = ({
+  activeMode,
+  batTestSubMode = 'CC',
+  connectionStatus,
+  activeTab,
+  protocolType = 'RS485',
+}) => {
+  const [timeStr, setTimeStr] = useState<string>('');
+  const [dateStr, setDateStr] = useState<string>('');
+
+  const modeLabel = activeMode === 'BAT TEST' ? `BAT TEST (${batTestSubMode} MODE)` : `${activeMode} MODE`;
+  const isEngSettings = activeTab === 'engSettings';
+
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      setTimeStr(now.toTimeString().split(' ')[0]);
+      
+      const day = String(now.getDate()).padStart(2, '0');
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const year = now.getFullYear();
+      setDateStr(`${day}/${month}/${year}`);
+    };
+
+    updateTime();
+    const timer = setInterval(updateTime, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <header className="header-bar">
+      <div className="brand-section">
+        {!isEngSettings && (
+          <div className="logo-badge" style={{ background: '#ffffff', border: '1px solid var(--border-color)', padding: '4px 10px', borderRadius: '6px' }}>
+            <JomaLogo height={30} />
+          </div>
+        )}
+      </div>
+
+      {!isEngSettings && (
+        <div className="header-center">
+          <Clock size={16} className="text-cyan-400" />
+          <span>{timeStr}</span>
+          <span style={{ opacity: 0.4 }}>|</span>
+          <span>{dateStr}</span>
+        </div>
+      )}
+
+      <div className="header-right">
+        <div className={`status-badge ${connectionStatus === 'CONNECTED' ? 'connected' : 'disconnected'}`}>
+          <div className="status-dot"></div>
+          {connectionStatus === 'CONNECTED' ? (
+            <>
+              <Activity size={14} />
+              <span>CONNECTED ({protocolType})</span>
+            </>
+          ) : (
+            <span>DISCONNECTED ({protocolType})</span>
+          )}
+        </div>
+      </div>
+    </header>
+  );
+};
