@@ -25,6 +25,7 @@ function getModeSetpointString(session: TestSession): string {
   }
 
   const mode = String(session.mode).toUpperCase();
+  if (mode.includes('PS')) return `V: ${formatVoltage(session.setpointV)} V | I: ${formatCurrent(session.setpointI)} A`;
   if (mode.includes('CV')) return `${formatVoltage(session.setpointV)} V`;
   if (mode.includes('CC')) return `${formatCurrent(session.setpointI)} A`;
   if (mode.includes('CR')) return `${(session.setpointR || 10.0).toFixed(2)} Ω`;

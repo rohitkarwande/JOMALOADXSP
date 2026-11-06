@@ -15,7 +15,7 @@ import './styles/index.css';
 
 export const App: React.FC = () => {
   const [activeView, setActiveView] = useState<ActiveViewType>('dashboard');
-  const [currentMode, setCurrentMode] = useState<OperationMode>('CV');
+  const [currentMode, setCurrentMode] = useState<OperationMode>('PS_MODE');
   const [outputState, setOutputState] = useState<boolean>(false);
   const [connectionStatus, setConnectionStatus] = useState<'CONNECTED' | 'DISCONNECTED'>('DISCONNECTED');
   const [safetyModal, setSafetyModal] = useState<{ title?: string; message: string } | null>(null);
@@ -916,8 +916,8 @@ export const App: React.FC = () => {
           mode: currentMode,
           startTime: new Date().toLocaleString(),
           durationSeconds: elapsedTimeSeconds,
-          setpointV: setpoints.cv,
-          setpointI: setpoints.iset,
+          setpointV: currentMode === 'PS_MODE' ? (setpoints.vsetPs || 0) : setpoints.cv,
+          setpointI: currentMode === 'PS_MODE' ? (setpoints.isetPs || 0) : setpoints.iset,
           setpointR: setpoints.rset,
           setpointP: setpoints.pset,
           maxVoltage: maxV,
