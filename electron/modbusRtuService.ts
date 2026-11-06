@@ -312,7 +312,11 @@ export class ModbusRtuService {
     pset: 120.0,
     cutoffV: 10.50,
     dischgI: 2.50,
-    batTestSubMode: 'CC'
+    batTestSubMode: 'CC',
+    vsetPs: 12.00,
+    isetPs: 3.00,
+    vsetRangePs: 60.0,
+    isetRangePs: 30.0
   };
 
   private simForcePowerExceed: boolean = false;
@@ -743,23 +747,28 @@ export class ModbusRtuService {
         }
       } catch (eC) {}
 
-      // Read holding registers 30-37 for Single Power Supply limits & setpoints (V_MAX_PS, I_MAX_PS, V_SET_PS, I_SET_PS)
+      // Read holding registers 30-41 for Single Power Supply setpoints & hardware ranges
       try {
         const regs = this.settings.registers;
         const psStartAddr = regs.vmaxPs ?? (isBase1 ? 30 : 29);
-        const res3 = await this.modbusClient.readHoldingRegisters(psStartAddr, 8);
+        const res3 = await this.modbusClient.readHoldingRegisters(psStartAddr, 12);
         if (res3 && res3.data && res3.data.length >= 8) {
-          const vmaxPs = this.readFloatFromBuffer(res3.data, 0); // 4X 30
-          const imaxPs = this.readFloatFromBuffer(res3.data, 2); // 4X 32
-          const vsetPs = this.readFloatFromBuffer(res3.data, 4); // 4X 34
-          const isetPs = this.readFloatFromBuffer(res3.data, 6); // 4X 36
+          const vsetPs = this.readFloatFromBuffer(res3.data, 4); // 4X 34 (V_SET_PS)
+          const isetPs = this.readFloatFromBuffer(res3.data, 6); // 4X 36 (I_SET_PS)
 
-          if (!isNaN(vmaxPs) && vmaxPs > 0) this.engSettings.vmaxPs = vmaxPs;
-          if (!isNaN(imaxPs) && imaxPs > 0) this.engSettings.imaxPs = imaxPs;
           if (!isNaN(vsetPs) && vsetPs >= 0) this.setpoints.vsetPs = vsetPs;
           if (!isNaN(isetPs) && isetPs >= 0) this.setpoints.isetPs = isetPs;
 
-          console.log(`[Modbus Connect Sync] Synced Single PS registers: VmaxPs=${vmaxPs}V, ImaxPs=${imaxPs}A, VsetPs=${vsetPs}V, IsetPs=${isetPs}A`);
+          if (res3.data.length >= 10) {
+            const isetRange = this.readFloatFromBuffer(res3.data, 8); // 4X 38 (Iset_RANGE_PS)
+            if (!isNaN(isetRange) && isetRange > 0) this.setpoints.isetRangePs = isetRange;
+          }
+          if (res3.data.length >= 12) {
+            const vsetRange = this.readFloatFromBuffer(res3.data, 10); // 4X 40 (Vset_RANGE_PS)
+            if (!isNaN(vsetRange) && vsetRange > 0) this.setpoints.vsetRangePs = vsetRange;
+          }
+
+          console.log(`[Modbus Connect Sync] Synced Single PS registers: VsetPs=${this.setpoints.vsetPs}V, IsetPs=${this.setpoints.isetPs}A, Iset_RANGE_PS=${this.setpoints.isetRangePs}A, Vset_RANGE_PS=${this.setpoints.vsetRangePs}V`);
         }
       } catch (e3) {}
     } catch (err) {
@@ -1138,6 +1147,8 @@ export class ModbusRtuService {
           I_MAX_PS: { value: this.engSettings.imaxPs || 30.0, formatted: `${(this.engSettings.imaxPs || 30.0).toFixed(2)} A` },
           V_SET_PS: { value: this.setpoints.vsetPs || 12.0, formatted: `${(this.setpoints.vsetPs || 12.0).toFixed(3)} V` },
           I_SET_PS: { value: this.setpoints.isetPs || 5.0, formatted: `${(this.setpoints.isetPs || 5.0).toFixed(3)} A` },
+          Iset_RANGE_PS: { value: this.setpoints.isetRangePs || 30.0, formatted: `${(this.setpoints.isetRangePs || 30.0).toFixed(3)} A` },
+          Vset_RANGE_PS: { value: this.setpoints.vsetRangePs || 60.0, formatted: `${(this.setpoints.vsetRangePs || 60.0).toFixed(2)} V` },
           START_STOP_PS: { value: this.outputState, formatted: this.outputState ? '1 (ON)' : '0 (OFF)' }
         };
         return { success: true, registers: result };
@@ -1267,7 +1278,7 @@ export class ModbusRtuService {
 
         try {
           const psStartAddr = this.settings.registers.vmaxPs ?? (isBase1 ? 30 : 29);
-          const resPs = await this.modbusClient!.readHoldingRegisters(psStartAddr, 8);
+          const resPs = await this.modbusClient!.readHoldingRegisters(psStartAddr, 12);
           if (resPs && resPs.data && resPs.data.length >= 8) {
             const vPs = this.readFloatFromBuffer(resPs.data, 0);
             const iPs = this.readFloatFromBuffer(resPs.data, 2);
@@ -1277,6 +1288,14 @@ export class ModbusRtuService {
             if (!isNaN(iPs) && iPs > 0) { imaxPs = iPs; this.engSettings.imaxPs = iPs; }
             if (!isNaN(vsPs) && vsPs >= 0) { vsetPs = vsPs; this.setpoints.vsetPs = vsPs; }
             if (!isNaN(isPs) && isPs >= 0) { isetPs = isPs; this.setpoints.isetPs = isPs; }
+            if (resPs.data.length >= 10) {
+              const isetR = this.readFloatFromBuffer(resPs.data, 8);
+              if (!isNaN(isetR) && isetR > 0) this.setpoints.isetRangePs = isetR;
+            }
+            if (resPs.data.length >= 12) {
+              const vsetR = this.readFloatFromBuffer(resPs.data, 10);
+              if (!isNaN(vsetR) && vsetR > 0) this.setpoints.vsetRangePs = vsetR;
+            }
           }
           const psCoilAddr = this.settings.registers.outputCoilPs ?? (isBase1 ? 5 : 4);
           const resCoilPs = await this.modbusClient!.readCoils(psCoilAddr, 1);
@@ -1312,6 +1331,8 @@ export class ModbusRtuService {
           I_MAX_PS: { value: imaxPs, formatted: `${imaxPs.toFixed(2)} A` },
           V_SET_PS: { value: vsetPs, formatted: `${vsetPs.toFixed(3)} V` },
           I_SET_PS: { value: isetPs, formatted: `${isetPs.toFixed(3)} A` },
+          Iset_RANGE_PS: { value: this.setpoints.isetRangePs || 30.0, formatted: `${(this.setpoints.isetRangePs || 30.0).toFixed(3)} A` },
+          Vset_RANGE_PS: { value: this.setpoints.vsetRangePs || 60.0, formatted: `${(this.setpoints.vsetRangePs || 60.0).toFixed(2)} V` },
           START_STOP_PS: { value: startStopPs, formatted: startStopPs ? '1 (ON)' : '0 (OFF)' }
         };
 
@@ -1362,6 +1383,22 @@ export class ModbusRtuService {
       const err = `⚠️ POWER_CP_MODE (${newSetpoints.pset.toFixed(1)} W) exceeds P_MAX limit (${this.engSettings.pmax.toFixed(1)} W)! Write blocked.`;
       console.warn(`[RS485 Warning] ${err}`);
       return { success: false, error: err };
+    }
+    if (newSetpoints.vsetPs !== undefined) {
+      const vRangeLimit = this.setpoints.vsetRangePs && this.setpoints.vsetRangePs > 0 ? this.setpoints.vsetRangePs : (this.engSettings.vmaxPs || 60.0);
+      if (vRangeLimit > 0 && newSetpoints.vsetPs > vRangeLimit) {
+        const err = `⚠️ V_SET_PS (${newSetpoints.vsetPs.toFixed(3)} V) exceeds Vset_RANGE_PS limit (${vRangeLimit.toFixed(2)} V)! Write blocked.`;
+        console.warn(`[Modbus Warning] ${err}`);
+        return { success: false, error: err };
+      }
+    }
+    if (newSetpoints.isetPs !== undefined) {
+      const iRangeLimit = this.setpoints.isetRangePs && this.setpoints.isetRangePs > 0 ? this.setpoints.isetRangePs : (this.engSettings.imaxPs || 30.0);
+      if (iRangeLimit > 0 && newSetpoints.isetPs > iRangeLimit) {
+        const err = `⚠️ I_SET_PS (${newSetpoints.isetPs.toFixed(3)} A) exceeds Iset_RANGE_PS limit (${iRangeLimit.toFixed(3)} A)! Write blocked.`;
+        console.warn(`[Modbus Warning] ${err}`);
+        return { success: false, error: err };
+      }
     }
 
     const candidate = { ...this.setpoints, ...newSetpoints };
@@ -1952,11 +1989,11 @@ export class ModbusRtuService {
           b2 = res2.data;
           await new Promise((r) => setTimeout(r, 15));
 
-          // Block 3: Registers 30..37 (V_MAX_PS, I_MAX_PS, V_SET_PS, I_SET_PS)
+          // Block 3: Registers 30..41 (V_MAX_PS, I_MAX_PS, V_SET_PS, I_SET_PS, Iset_RANGE_PS, Vset_RANGE_PS)
           try {
             const regs = this.settings.registers;
             const psStart = regs.vmaxPs ?? (isBase1 ? 30 : 29);
-            const res3 = await this.modbusClient.readHoldingRegisters(psStart, 8);
+            const res3 = await this.modbusClient.readHoldingRegisters(psStart, 12);
             b3 = res3.data;
           } catch (e3) {}
           await new Promise((r) => setTimeout(r, 15));
@@ -1969,7 +2006,7 @@ export class ModbusRtuService {
           console.warn('[RS485 Telemetry] Block read failed, fallback to individual reads:', blockErr);
           const allHolding: number[] = [];
           let consecutiveFailures = 0;
-          for (let i = 0; i < 38; i++) {
+          for (let i = 0; i < 42; i++) {
             if (this.connectionSessionId !== currentSession || !this.modbusClient || !this.modbusClient.isOpen) {
               throw new Error('Connection closed during telemetry individual read fallback');
             }
@@ -1989,7 +2026,7 @@ export class ModbusRtuService {
           }
           b1 = allHolding.slice(0, 16);
           b2 = allHolding.slice(16, 31);
-          b3 = allHolding.slice(29, 37);
+          b3 = allHolding.slice(29, 41);
           try {
             const resC = await this.modbusClient.readCoils(baseC, 5);
             c = resC.data;
@@ -2026,11 +2063,13 @@ export class ModbusRtuService {
         const popVoltExceed = Boolean(c && c.length >= 4 ? c[3] : false);
         const hwOutputStatePs = Boolean(c && c.length >= 5 ? c[4] : false);
 
-        // Parse Single Power Supply Mode Holding Registers (4X 30..37)
+        // Parse Single Power Supply Mode Holding Registers (4X 30..41)
         const vMaxPsRaw = b3 && b3.length >= 2 ? this.readFloatFromBuffer(b3, 0) : undefined;
         const iMaxPsRaw = b3 && b3.length >= 4 ? this.readFloatFromBuffer(b3, 2) : undefined;
         const vSetPsRaw = b3 && b3.length >= 6 ? this.readFloatFromBuffer(b3, 4) : undefined;
         const iSetPsRaw = b3 && b3.length >= 8 ? this.readFloatFromBuffer(b3, 6) : undefined;
+        const iSetRangePsRaw = b3 && b3.length >= 10 ? this.readFloatFromBuffer(b3, 8) : undefined;
+        const vSetRangePsRaw = b3 && b3.length >= 12 ? this.readFloatFromBuffer(b3, 10) : undefined;
 
         // Sync Output state with physical HMI coil (Coil 5 for PS Mode, Coil 1 for Load modes)
         const activeHwOutput = (this.currentMode === 'PS_MODE') ? hwOutputStatePs : hwOutputState;
@@ -2087,6 +2126,18 @@ export class ModbusRtuService {
         if (iSetPsRaw !== undefined && !isNaN(iSetPsRaw) && iSetPsRaw >= 0) {
           hardwareIsetPs = iSetPsRaw;
           this.setpoints.isetPs = iSetPsRaw;
+        }
+
+        let hardwareVsetRangePs: number | undefined = this.setpoints.vsetRangePs;
+        let hardwareIsetRangePs: number | undefined = this.setpoints.isetRangePs;
+
+        if (vSetRangePsRaw !== undefined && !isNaN(vSetRangePsRaw) && vSetRangePsRaw > 0) {
+          hardwareVsetRangePs = vSetRangePsRaw;
+          this.setpoints.vsetRangePs = vSetRangePsRaw;
+        }
+        if (iSetRangePsRaw !== undefined && !isNaN(iSetRangePsRaw) && iSetRangePsRaw > 0) {
+          hardwareIsetRangePs = iSetRangePsRaw;
+          this.setpoints.isetRangePs = iSetRangePsRaw;
         }
 
         // Sync Setpoints from HMI
@@ -2165,6 +2216,8 @@ export class ModbusRtuService {
           hardwareImaxPs,
           hardwareVsetPs,
           hardwareIsetPs,
+          hardwareVsetRangePs,
+          hardwareIsetRangePs,
           hardwareOutputPs: hwOutputStatePs,
           isStale: false,
           deviceResponding: true,
@@ -2230,6 +2283,8 @@ export class ModbusRtuService {
         hardwareImaxPs: this.engSettings.imaxPs ?? 30.0,
         hardwareVsetPs: this.setpoints.vsetPs ?? 12.0,
         hardwareIsetPs: this.setpoints.isetPs ?? 3.0,
+        hardwareVsetRangePs: this.setpoints.vsetRangePs ?? 60.0,
+        hardwareIsetRangePs: this.setpoints.isetRangePs ?? 30.0,
         hardwareOutputPs: false,
         isStale: false
       };
@@ -2342,6 +2397,8 @@ export class ModbusRtuService {
       hardwareImaxPs: this.engSettings.imaxPs ?? 30.0,
       hardwareVsetPs: this.setpoints.vsetPs ?? 12.0,
       hardwareIsetPs: this.setpoints.isetPs ?? 3.0,
+      hardwareVsetRangePs: this.setpoints.vsetRangePs ?? 60.0,
+      hardwareIsetRangePs: this.setpoints.isetRangePs ?? 30.0,
       hardwareOutputPs: this.currentMode === 'PS_MODE' ? this.outputState : false,
       isStale: false
     };

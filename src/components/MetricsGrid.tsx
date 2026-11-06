@@ -48,11 +48,15 @@ export const MetricsGrid: React.FC<MetricsGridProps> = ({
   const rmax = (telemetry.hardwareRmax !== undefined && telemetry.hardwareRmax > 0) ? telemetry.hardwareRmax : (engSettings?.rmax ?? 100.0);
   const pmax = (telemetry.hardwarePmax !== undefined && telemetry.hardwarePmax > 0) ? telemetry.hardwarePmax : (engSettings?.pmax ?? 5000.0);
 
-  // Single Power Supply Mode Limits (Read-Only from Hardware)
-  const vmaxPs = (telemetry.hardwareVmaxPs !== undefined && telemetry.hardwareVmaxPs > 0) ? telemetry.hardwareVmaxPs : (engSettings?.vmaxPs ?? 60.0);
-  const imaxPs = (telemetry.hardwareImaxPs !== undefined && telemetry.hardwareImaxPs > 0) ? telemetry.hardwareImaxPs : (engSettings?.imaxPs ?? 30.0);
-  const isVsetPsExceeded = currentMode === 'PS_MODE' && (setpoints.vsetPs ?? 0) > vmaxPs;
-  const isIsetPsExceeded = currentMode === 'PS_MODE' && (setpoints.isetPs ?? 0) > imaxPs;
+  // Single Power Supply Mode Limits (Vset_RANGE_PS: 4X 40 & Iset_RANGE_PS: 4X 38 - Read-Only from Hardware)
+  const vsetRangePs = (telemetry.hardwareVsetRangePs !== undefined && telemetry.hardwareVsetRangePs > 0)
+    ? telemetry.hardwareVsetRangePs
+    : (setpoints.vsetRangePs && setpoints.vsetRangePs > 0 ? setpoints.vsetRangePs : 60.0);
+  const isetRangePs = (telemetry.hardwareIsetRangePs !== undefined && telemetry.hardwareIsetRangePs > 0)
+    ? telemetry.hardwareIsetRangePs
+    : (setpoints.isetRangePs && setpoints.isetRangePs > 0 ? setpoints.isetRangePs : 30.0);
+  const isVsetPsExceeded = currentMode === 'PS_MODE' && (setpoints.vsetPs ?? 0) > vsetRangePs;
+  const isIsetPsExceeded = currentMode === 'PS_MODE' && (setpoints.isetPs ?? 0) > isetRangePs;
 
   const isCvExceeded = setpoints.cv > vmax;
   const activeIrange = (telemetry.hardwareIrange !== undefined && telemetry.hardwareIrange > 0) ? telemetry.hardwareIrange : (setpoints.imax > 0 ? setpoints.imax : imax);
@@ -168,6 +172,8 @@ export const MetricsGrid: React.FC<MetricsGridProps> = ({
                 <KeyboardNumericInput
                   step={0.5}
                   precision={3}
+                  min={0}
+                  max={vsetRangePs}
                   disabled={isFreezed}
                   commitOnEnterOnly={true}
                   showEnterButton={true}
@@ -182,7 +188,7 @@ export const MetricsGrid: React.FC<MetricsGridProps> = ({
                 <span className="setpoint-unit">V</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingLeft: '4px', fontSize: '0.75rem', color: '#64748b' }}>
-                <span>Hardware Limit: &le; V_MAX_PS ({vmaxPs.toFixed(2)} V)</span>
+                <span style={{ fontWeight: 600 }}>Hardware Limit: &le; Vset_RANGE_PS ({vsetRangePs.toFixed(2)} V)</span>
                 <span style={{ fontWeight: 700, color: '#0284c7' }}>
                   Live Readback: {(telemetry.hardwareVsetPs !== undefined ? telemetry.hardwareVsetPs : (setpoints.vsetPs ?? 12.0)).toFixed(3)} V
                 </span>
@@ -190,7 +196,7 @@ export const MetricsGrid: React.FC<MetricsGridProps> = ({
               {isVsetPsExceeded && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', fontWeight: 800 }}>
                   <AlertCircle size={14} />
-                  <span>⚠️ EXCEEDS V_MAX_PS LIMIT ({vmaxPs.toFixed(2)} V)!</span>
+                  <span>⚠️ EXCEEDS Vset_RANGE_PS LIMIT ({vsetRangePs.toFixed(2)} V)!</span>
                 </div>
               )}
             </div>
@@ -205,6 +211,8 @@ export const MetricsGrid: React.FC<MetricsGridProps> = ({
                 <KeyboardNumericInput
                   step={0.1}
                   precision={3}
+                  min={0}
+                  max={isetRangePs}
                   disabled={isFreezed}
                   commitOnEnterOnly={true}
                   showEnterButton={true}
@@ -219,7 +227,7 @@ export const MetricsGrid: React.FC<MetricsGridProps> = ({
                 <span className="setpoint-unit">A</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingLeft: '4px', fontSize: '0.75rem', color: '#64748b' }}>
-                <span>Hardware Limit: &le; I_MAX_PS ({imaxPs.toFixed(2)} A)</span>
+                <span style={{ fontWeight: 600 }}>Hardware Limit: &le; Iset_RANGE_PS ({isetRangePs.toFixed(2)} A)</span>
                 <span style={{ fontWeight: 700, color: '#16a34a' }}>
                   Live Readback: {(telemetry.hardwareIsetPs !== undefined ? telemetry.hardwareIsetPs : (setpoints.isetPs ?? 3.0)).toFixed(3)} A
                 </span>
@@ -227,7 +235,7 @@ export const MetricsGrid: React.FC<MetricsGridProps> = ({
               {isIsetPsExceeded && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontSize: '0.78rem', fontWeight: 800 }}>
                   <AlertCircle size={14} />
-                  <span>⚠️ EXCEEDS I_MAX_PS LIMIT ({imaxPs.toFixed(2)} A)!</span>
+                  <span>⚠️ EXCEEDS Iset_RANGE_PS LIMIT ({isetRangePs.toFixed(2)} A)!</span>
                 </div>
               )}
             </div>

@@ -9,3 +9,4 @@ const child = spawn(electron, ['.'], { stdio: 'inherit', env });
 child.on('close', (code) => {
   process.exit(code ?? 0);
 });
+

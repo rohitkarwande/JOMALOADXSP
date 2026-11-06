@@ -40,6 +40,8 @@ export interface SetpointValues {
   min?: number;       // Minutes setpoint/value
   vsetPs?: number;    // V_SET_PS (4X 34) for Single Power Supply Mode
   isetPs?: number;    // I_SET_PS (4X 36) for Single Power Supply Mode
+  vsetRangePs?: number; // Vset_RANGE_PS (4X 40) - Maximum settable V for PS Mode (Read-Only from HW)
+  isetRangePs?: number; // Iset_RANGE_PS (4X 38) - Maximum settable I for PS Mode (Read-Only from HW)
 }
 
 export interface TelemetryPoint {
@@ -77,6 +79,8 @@ export interface TelemetryPoint {
   hardwareImaxPs?: number;      // Active I_MAX_PS read from HMI (4X 32)
   hardwareVsetPs?: number;      // Active V_SET_PS read from HMI (4X 34)
   hardwareIsetPs?: number;      // Active I_SET_PS read from HMI (4X 36)
+  hardwareVsetRangePs?: number; // Active Vset_RANGE_PS read from HMI (4X 40)
+  hardwareIsetRangePs?: number; // Active Iset_RANGE_PS read from HMI (4X 38)
   hardwareOutputPs?: boolean;   // Active START_STOP_PS read from HMI (0X 5)
   deviceResponding?: boolean; // True if slave device is acknowledging Modbus queries
   _debugMainTimestamp?: number;
@@ -128,6 +132,8 @@ export interface RegisterOffsets {
   vsetPs?: number;            // 4X 34 (FLOAT, 2 Regs) - V_SET_PS
   isetPs?: number;            // 4X 36 (FLOAT, 2 Regs) - I_SET_PS
   outputCoilPs?: number;      // 0X 5 (Bit) - START_STOP_PS (1=ON, 0=OFF)
+  isetRangePs?: number;       // 4X 38 (FLOAT, 2 Regs) - Iset_RANGE_PS
+  vsetRangePs?: number;       // 4X 40 (FLOAT, 2 Regs) - Vset_RANGE_PS
   ccImaxRange?: number;       // 4X 13 (FLOAT, 2 Regs) - I_SET_RANGE_CC (I MAX CC MODE)
   iset: number;               // 4X 15 (FLOAT, 2 Regs) - I_SET_ROW_CC (I TARGET / I LIMIT)
   isetRow?: number;           // 4X 15 (FLOAT, 2 Regs)
@@ -284,6 +290,8 @@ export const CLIENT_CSV_REGISTERS_BASE1: RegisterOffsets = {
   imaxPs: 32,             // 4X 32 (FLOAT, 2 Regs: 32 & 33) - I_MAX_PS (ENG SETTINGS)
   vsetPs: 34,             // 4X 34 (FLOAT, 2 Regs: 34 & 35) - V_SET_PS
   isetPs: 36,             // 4X 36 (FLOAT, 2 Regs: 36 & 37) - I_SET_PS
+  isetRangePs: 38,        // 4X 38 (FLOAT, 2 Regs: 38 & 39) - Iset_RANGE_PS
+  vsetRangePs: 40,        // 4X 40 (FLOAT, 2 Regs: 40 & 41) - Vset_RANGE_PS
   outputCoilPs: 5,        // 0X 5 (Bit) - START_STOP_PS (1=ON, 0=OFF)
   addressBase: 1
 };
@@ -315,6 +323,8 @@ export const CLIENT_CSV_REGISTERS_BASE0: RegisterOffsets = {
   imaxPs: 31,             // 4X 32 -> Wire PDU 31
   vsetPs: 33,             // 4X 34 -> Wire PDU 33
   isetPs: 35,             // 4X 36 -> Wire PDU 35
+  isetRangePs: 37,        // 4X 38 -> Wire PDU 37
+  vsetRangePs: 39,        // 4X 40 -> Wire PDU 39
   outputCoilPs: 4,        // 0X 5 -> Wire PDU 4
   addressBase: 0
 };

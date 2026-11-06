@@ -236,6 +236,18 @@ export const App: React.FC = () => {
         newIsetPs = regs['I_SET_PS'].value;
         changed = true;
       }
+      let newVsetRangePs = prev.vsetRangePs;
+      const vRangeReg = regs['Vset_RANGE_PS'] ?? regs['V_SET_RANGE_PS'];
+      if (typeof vRangeReg?.value === 'number' && vRangeReg.value > 0 && vRangeReg.value !== prev.vsetRangePs) {
+        newVsetRangePs = vRangeReg.value;
+        changed = true;
+      }
+      let newIsetRangePs = prev.isetRangePs;
+      const iRangeReg = regs['Iset_RANGE_PS'] ?? regs['I_SET_RANGE_PS'];
+      if (typeof iRangeReg?.value === 'number' && iRangeReg.value > 0 && iRangeReg.value !== prev.isetRangePs) {
+        newIsetRangePs = iRangeReg.value;
+        changed = true;
+      }
 
       if (!changed) return prev;
       return {
@@ -251,7 +263,9 @@ export const App: React.FC = () => {
         rset: newRset,
         pset: newPset,
         vsetPs: newVsetPs,
-        isetPs: newIsetPs
+        isetPs: newIsetPs,
+        vsetRangePs: newVsetRangePs,
+        isetRangePs: newIsetRangePs
       };
     });
 
@@ -277,16 +291,6 @@ export const App: React.FC = () => {
         newRmax = regs['R_MAX'].value;
         changed = true;
       }
-      let newVmaxPs = prev.vmaxPs;
-      if (typeof regs['V_MAX_PS']?.value === 'number' && regs['V_MAX_PS'].value > 0 && regs['V_MAX_PS'].value !== prev.vmaxPs) {
-        newVmaxPs = regs['V_MAX_PS'].value;
-        changed = true;
-      }
-      let newImaxPs = prev.imaxPs;
-      if (typeof regs['I_MAX_PS']?.value === 'number' && regs['I_MAX_PS'].value > 0 && regs['I_MAX_PS'].value !== prev.imaxPs) {
-        newImaxPs = regs['I_MAX_PS'].value;
-        changed = true;
-      }
 
       if (!changed) return prev;
       return {
@@ -294,9 +298,7 @@ export const App: React.FC = () => {
         vmax: newVmax,
         imax: newImax,
         pmax: newPmax,
-        rmax: newRmax,
-        vmaxPs: newVmaxPs,
-        imaxPs: newImaxPs
+        rmax: newRmax
       };
     });
   };
@@ -373,6 +375,12 @@ export const App: React.FC = () => {
         if (point.hardwareIsetPs !== undefined && point.hardwareIsetPs >= 0) {
           setSetpoints((prev) => (prev.isetPs !== point.hardwareIsetPs ? { ...prev, isetPs: point.hardwareIsetPs! } : prev));
         }
+        if (point.hardwareVsetRangePs !== undefined && point.hardwareVsetRangePs > 0) {
+          setSetpoints((prev) => (prev.vsetRangePs !== point.hardwareVsetRangePs ? { ...prev, vsetRangePs: point.hardwareVsetRangePs! } : prev));
+        }
+        if (point.hardwareIsetRangePs !== undefined && point.hardwareIsetRangePs > 0) {
+          setSetpoints((prev) => (prev.isetRangePs !== point.hardwareIsetRangePs ? { ...prev, isetRangePs: point.hardwareIsetRangePs! } : prev));
+        }
 
         if (point.hardwareVmax !== undefined && point.hardwareVmax > 0) {
           setEngSettings((prev) => (prev.vmax !== point.hardwareVmax ? { ...prev, vmax: point.hardwareVmax! } : prev));
@@ -385,12 +393,6 @@ export const App: React.FC = () => {
         }
         if (point.hardwareRmax !== undefined && point.hardwareRmax > 0) {
           setEngSettings((prev) => (prev.rmax !== point.hardwareRmax ? { ...prev, rmax: point.hardwareRmax! } : prev));
-        }
-        if (point.hardwareVmaxPs !== undefined && point.hardwareVmaxPs > 0) {
-          setEngSettings((prev) => (prev.vmaxPs !== point.hardwareVmaxPs ? { ...prev, vmaxPs: point.hardwareVmaxPs! } : prev));
-        }
-        if (point.hardwareImaxPs !== undefined && point.hardwareImaxPs > 0) {
-          setEngSettings((prev) => (prev.imaxPs !== point.hardwareImaxPs ? { ...prev, imaxPs: point.hardwareImaxPs! } : prev));
         }
 
         // 2-way HMI synchronization: If Output ON/OFF changed on physical hardware panel, reflect in app!
@@ -782,27 +784,27 @@ export const App: React.FC = () => {
       return;
     }
 
-    // Safety 8: Single Power Supply V_SET_PS cannot exceed V_MAX_PS limit
-    const vMaxPsLimit = (telemetry.hardwareVmaxPs !== undefined && telemetry.hardwareVmaxPs > 0)
-      ? telemetry.hardwareVmaxPs
-      : (engSettings.vmaxPs || 60.0);
-    if (key === 'vsetPs' && vMaxPsLimit > 0 && typeof val === 'number' && val > vMaxPsLimit) {
+    // Safety 8: Single Power Supply V_SET_PS cannot exceed Vset_RANGE_PS limit (4X 40)
+    const vsetRangeLimit = (telemetry.hardwareVsetRangePs !== undefined && telemetry.hardwareVsetRangePs > 0)
+      ? telemetry.hardwareVsetRangePs
+      : (setpoints.vsetRangePs && setpoints.vsetRangePs > 0 ? setpoints.vsetRangePs : 60.0);
+    if (key === 'vsetPs' && vsetRangeLimit > 0 && typeof val === 'number' && val > vsetRangeLimit) {
       setSafetyModal({
         title: '⚠️ Safety Limit Warning',
-        message: `⚠️ V_SET_PS (${val.toFixed(3)} V) exceeds V_MAX_PS limit (${vMaxPsLimit.toFixed(2)} V)! Write blocked.`
+        message: `⚠️ V_SET_PS (${val.toFixed(3)} V) exceeds Vset_RANGE_PS limit (${vsetRangeLimit.toFixed(2)} V)! Write blocked.`
       });
       setSetpoints((prev) => ({ ...prev }));
       return;
     }
 
-    // Safety 9: Single Power Supply I_SET_PS cannot exceed I_MAX_PS limit
-    const iMaxPsLimit = (telemetry.hardwareImaxPs !== undefined && telemetry.hardwareImaxPs > 0)
-      ? telemetry.hardwareImaxPs
-      : (engSettings.imaxPs || 30.0);
-    if (key === 'isetPs' && iMaxPsLimit > 0 && typeof val === 'number' && val > iMaxPsLimit) {
+    // Safety 9: Single Power Supply I_SET_PS cannot exceed Iset_RANGE_PS limit (4X 38)
+    const isetRangeLimit = (telemetry.hardwareIsetRangePs !== undefined && telemetry.hardwareIsetRangePs > 0)
+      ? telemetry.hardwareIsetRangePs
+      : (setpoints.isetRangePs && setpoints.isetRangePs > 0 ? setpoints.isetRangePs : 30.0);
+    if (key === 'isetPs' && isetRangeLimit > 0 && typeof val === 'number' && val > isetRangeLimit) {
       setSafetyModal({
         title: '⚠️ Safety Limit Warning',
-        message: `⚠️ I_SET_PS (${val.toFixed(3)} A) exceeds I_MAX_PS limit (${iMaxPsLimit.toFixed(2)} A)! Write blocked.`
+        message: `⚠️ I_SET_PS (${val.toFixed(3)} A) exceeds Iset_RANGE_PS limit (${isetRangeLimit.toFixed(2)} A)! Write blocked.`
       });
       setSetpoints((prev) => ({ ...prev }));
       return;
